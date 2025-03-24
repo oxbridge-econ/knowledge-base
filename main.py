@@ -1,10 +1,11 @@
 """Module to run the mail collection process."""
 from dotenv import load_dotenv
+
 from controllers import mail
 from chain import RAGChain
 from retriever import DocRetriever
 
-# load_dotenv()
+load_dotenv()
 
 if __name__ == "__main__":
     mail.collect()

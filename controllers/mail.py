@@ -1,15 +1,24 @@
 """Module to search and list emails from Gmail."""
+import os
+import re
 import base64
 from datetime import datetime, timedelta
+from venv import logger
+
 import pandas as pd
 from langchain_core.documents import Document
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders.image import UnstructuredImageLoader
+from langchain_community.document_loaders.csv_loader import CSVLoader
 
-from venv import logger
-from models.mails import build_gmail_service
 from models.chroma import vectorstore
+from models.mails import build_gmail_service
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 EMAIL_PATTERN = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+
+ATTACHMENTS_DIR = "attachments"
+os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 
 service = build_gmail_service()
 
@@ -28,10 +37,10 @@ def search_emails(query):
     return messages
 
 def list_emails(messages):
-    """List emails from the search results."""
+    """List emails from the search results and download attachments."""
     ids = []
     documents = []
-    for message in messages[:50]:
+    for message in messages[:100]:
         msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
         metadata = {}
         for header in msg['payload']['headers']:
@@ -45,19 +54,42 @@ def list_emails(messages):
                 metadata['cc'] = header['value']
         metadata['date'] = datetime.fromtimestamp(
             int(msg['internalDate']) / 1000).strftime("%d/%m/%Y %H:%M:%S")
+        body = ""
         if 'parts' in msg['payload']:
-            body = ''.join(
-                part['body']['data'] for part in msg['payload']['parts'] if 'data' in part['body']
-            )
-            body = base64.urlsafe_b64decode(body).decode('utf-8')
+            for part in msg['payload']['parts']:
+                if part['filename']:
+                    attachment_id = part['body']['attachmentId']
+                    logger.info("Downloading attachment: %s", part['filename'])
+                    attachment = service.users().messages().attachments().get(
+                        userId='me', messageId=message['id'], id=attachment_id).execute()
+                    file_data = base64.urlsafe_b64decode(attachment['data'].encode('UTF-8'))
+                    path = os.path.join(".", ATTACHMENTS_DIR, part['filename'])
+                    with open(path, 'wb') as f:
+                        f.write(file_data)
+                    if part['filename'].endswith('.pdf'):
+                        attachment_documents = PyPDFLoader(path).load()
+                        documents = documents + attachment_documents
+                    if part['filename'].endswith('.png'):
+                        attachment_documents = UnstructuredImageLoader(path).load()
+                        documents = documents + attachment_documents
+                    if part['filename'].endswith('.csv'):
+                        attachment_documents = CSVLoader(path).load()
+                        documents = documents + attachment_documents
+            for index, document in enumerate(documents):
+                _id = f"{msg['id']}_{index}"
+                if 'source' in document.metadata:
+                    document.metadata['source'] = document.metadata['source'].replace(f"./{ATTACHMENTS_DIR}/", "")
+                document.metadata.update(metadata)
+                ids.append(_id)
         else:
             body = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
-        ids.append(msg['id'])
-        documents.append(Document(
-            page_content=body,
-            metadata=metadata
-        ))
-    return vectorstore.add_documents(documents= documents, ids = ids)
+            body = re.sub(r'<[^>]+>', '', body)  # Remove HTML tags
+            documents.append(Document(
+                page_content=body,
+                metadata=metadata
+            ))
+            ids.append(msg['id'])
+    return vectorstore.add_documents(documents=documents, ids=ids)
 
 def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%m/%d')):
     """

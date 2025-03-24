@@ -6,15 +6,12 @@ from venv import logger
 
 from pymongo import errors
 from langchain_core.runnables.history import RunnableWithMessageHistory
-# from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.messages import BaseMessage, message_to_dict
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
 from langchain_mongodb import MongoDBChatMessageHistory
 
-
-# from schema import FollowUpQ
 from models.llm import GPTModel
 
 llm = GPTModel()
@@ -107,50 +104,3 @@ class RAGChain(RunnableWithMessageHistory):
             history_messages_key="chat_history",
             output_messages_key="answer"
         )
-
-# class FollowUpChain():
-#     """
-#     FollowUpQChain is a class to generate follow-up questions based on contexts and initial query.
-
-#     Attributes:
-#         parser (PydanticOutputParser): An instance of PydanticOutputParser to parse the output.
-#         chain (Chain): A chain of prompts and models to generate follow-up questions.
-
-#     Methods:
-#         __init__():
-#             Initializes the FollowUpQChain with a parser and a prompt chain.
-
-#         invoke(contexts, query):
-#             Invokes the chain with the provided contexts and query to generate follow-up questions.
-
-#                 contexts (str): The contexts to be used for generating follow-up questions.
-#                 query (str): The initial query to be used for generating follow-up questions.
-#     """
-#     def __init__(self):
-#         self.parser = PydanticOutputParser(pydantic_object=FollowUpQ)
-#         prompt = ChatPromptTemplate.from_messages([
-#                     ("system", "You are a professional commentator on current events.Your task\
-#                       is to provide 3 follow-up questions based on contexts and initial query."),
-#                     ("system", "contexts: {contexts}"),
-#                     ("system", "initial query: {query}"),
-#                     ("human", "Format instructions: {format_instructions}"),
-#                     ("placeholder", "{agent_scratchpad}"),
-#                 ])
-#         self.chain = prompt | llm | self.parser
-
-#     def invoke(self, query, contexts):
-#         """
-#         Invokes the chain with the provided content and additional parameters.
-
-#         Args:
-#             content (str): The article content to be processed.
-
-#         Returns:
-#             The result of the chain invocation.
-#         """
-#         result = self.chain.invoke({
-#             'contexts': contexts,
-#             'format_instructions': self.parser.get_format_instructions(),
-#             'query': query
-#         })
-#         return result.questions

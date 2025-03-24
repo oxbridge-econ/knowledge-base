@@ -17,7 +17,6 @@ with st.sidebar:
         result = mail.collect()
         with st.chat_message("assistant"):
             response_content = st.markdown(result)
-            # st.session_state.messages.append({"role": "assistant", "content": result})
 
 if 'chat_id' not in st.session_state:
     st.session_state.chat_id = str(uuid.uuid4())
