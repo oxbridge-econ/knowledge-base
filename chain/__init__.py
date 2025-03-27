@@ -16,16 +16,16 @@ from langchain_huggingface import HuggingFacePipeline
 
 from models.llm import GPTModel, Phi4MiniONNXLLM, HuggingfaceModel
 
-llm = GPTModel()
-REPO_ID = "microsoft/Phi-4-mini-instruct-onnx"
-SUBFOLDER = "cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4"
-phi4_llm = Phi4MiniONNXLLM(REPO_ID, SUBFOLDER)
+# llm = GPTModel()
+# REPO_ID = "microsoft/Phi-4-mini-instruct-onnx"
+# SUBFOLDER = "cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4"
+# llm = Phi4MiniONNXLLM(REPO_ID, SUBFOLDER)
 
-MODEL_NAME = "openai-community/gpt2"
+# MODEL_NAME = "openai-community/gpt2"
 MODEL_NAME = "microsoft/phi-1_5"
-hf_llm = HuggingfaceModel(MODEL_NAME)
+# llm = HuggingfaceModel(MODEL_NAME)
 
-phi4_llm = HuggingFacePipeline.from_model_id(
+hf_llm = HuggingFacePipeline.from_model_id(
     model_id="microsoft/Phi-4",
     task="text-generation",
     pipeline_kwargs={

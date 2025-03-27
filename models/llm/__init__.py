@@ -54,6 +54,7 @@ class Phi4MiniONNXLLM:
             Performs inference on the given input data and returns the model's output.
     """
     def __init__(self, repo_id, subfolder, onnx_file="model.onnx", weights_file="model.onnx.data"):
+        self.repo_id = repo_id
         model_path = hf_hub_download(repo_id=repo_id, filename=f"{subfolder}/{onnx_file}")
         weights_path = hf_hub_download(repo_id=repo_id, filename=f"{subfolder}/{weights_file}")
         self.session = ort.InferenceSession(model_path)
@@ -63,10 +64,17 @@ class Phi4MiniONNXLLM:
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
 
-    def __call__(self, input_ids):
+    def __call__(self, input_text):
         # Assuming input_ids is a tensor or numpy array
-        outputs = self.session.run([self.output_name], {self.input_name: input_ids})
-        return outputs[0]
+        tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-4-mini-instruct-onnx")
+        inputs = tokenizer(input_text, return_tensors="pt")
+        input_feed = {
+            self.input_name: inputs["input_ids"].numpy(),
+            "attention_mask": inputs["attention_mask"].numpy(),
+            # Add past_key_values if applicable
+        }
+        outputs = self.session.run([self.output_name], input_feed)
+        return outputs
 
 class HuggingfaceModel(HuggingFacePipeline):
     """
@@ -81,12 +89,14 @@ class HuggingfaceModel(HuggingFacePipeline):
         __init__(name, max_tokens=200):
             Initializes the HuggingfaceModel with the specified model name and maximum token limit.
     """
-    def __init__(self, name, max_tokens=200):
+    def __init__(self, name, max_tokens=500):
         super().__init__(pipeline=pipeline(
             "text-generation",
             model=AutoModelForCausalLM.from_pretrained(name),
             tokenizer=AutoTokenizer.from_pretrained(name),
-            max_new_tokens=max_tokens))
+            max_new_tokens=max_tokens
+            )
+        )
 
 # model_name = "microsoft/phi-1_5"
 # tokenizer = AutoTokenizer.from_pretrained(model_name)
