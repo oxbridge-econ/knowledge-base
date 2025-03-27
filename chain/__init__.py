@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from venv import logger
 
+import torch
 from pymongo import errors
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.messages import BaseMessage, message_to_dict
@@ -11,10 +12,35 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
 from langchain_mongodb import MongoDBChatMessageHistory
+from langchain_huggingface import HuggingFacePipeline
 
-from models.llm import GPTModel
+from models.llm import GPTModel, Phi4MiniONNXLLM, HuggingfaceModel
 
 llm = GPTModel()
+REPO_ID = "microsoft/Phi-4-mini-instruct-onnx"
+SUBFOLDER = "cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4"
+phi4_llm = Phi4MiniONNXLLM(REPO_ID, SUBFOLDER)
+
+MODEL_NAME = "openai-community/gpt2"
+MODEL_NAME = "microsoft/phi-1_5"
+hf_llm = HuggingfaceModel(MODEL_NAME)
+
+phi4_llm = HuggingFacePipeline.from_model_id(
+    model_id="microsoft/Phi-4",
+    task="text-generation",
+    pipeline_kwargs={
+        "max_new_tokens": 128,
+        "temperature": 0.3,
+        "top_k": 50,
+        "do_sample": True
+    },
+    model_kwargs={
+        "torch_dtype": "auto",
+        "device_map": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        "max_memory": {0: "10GB"},
+        "use_cache": False
+    }
+)
 
 SYS_PROMPT = """You are a knowledgeable financial professional. You can provide well elaborated and credible answers to user queries in economic and finance by referring to retrieved contexts.
             You should answer user queries strictly following the instructions below, and do not provide anything irrelevant. \n

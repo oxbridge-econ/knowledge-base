@@ -1,4 +1,5 @@
 """Module for retrievers that fetch documents from various sources."""
+from venv import logger
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
@@ -22,9 +23,9 @@ class DocRetriever(BaseRetriever):
                 list: A list of Document objects with relevant metadata.
     """
     retriever: VectorStoreRetriever = None
-    k: int = 10
+    k: int = 5
 
-    def __init__(self, req, k: int = 10) -> None:
+    def __init__(self, req, k: int = 2) -> None:
         super().__init__()
         # _filter={}
         # if req.site != []:
@@ -32,30 +33,35 @@ class DocRetriever(BaseRetriever):
         # if req.id != []:
         #     _filter.update({"id": {"$in": req.id}})
         self.retriever = vectorstore.as_retriever(
-            search_type='similarity_score_threshold',
+            search_type='similarity',
             search_kwargs={
                 "k": k,
                 # "filter": _filter,
-                "score_threshold": .1
+                # "score_threshold": .1
             }
         )
 
     def _get_relevant_documents(self, query: str, *, run_manager) -> list:
-        retrieved_docs = self.retriever.invoke(query)
-        doc_lst = []
-        for doc in retrieved_docs:
-            # date = str(doc.metadata['publishDate'])
-            doc_lst.append(Document(
-                page_content = doc.page_content,
-                metadata = {
-                    "content": doc.page_content,
-                    # "id": doc.metadata['id'],
-                    # "title": doc.metadata['title'],
-                    # "site": doc.metadata['site'],
-                    # "link": doc.metadata['link'],
-                    # "publishDate": doc.metadata['publishDate'].strftime('%Y-%m-%d'),
-                    # 'web': False,
-                    # "source": "Finfast"
-                }
-            ))
-        return doc_lst
+        try:
+            retrieved_docs = self.retriever.invoke(query)
+            doc_lst = []
+            for doc in retrieved_docs:
+                # date = str(doc.metadata['publishDate'])
+                doc_lst.append(Document(
+                    page_content = doc.page_content,
+                    metadata = {
+                        "content": doc.page_content,
+                        # "id": doc.metadata['id'],
+                        # "title": doc.metadata['title'],
+                        # "site": doc.metadata['site'],
+                        # "link": doc.metadata['link'],
+                        # "publishDate": doc.metadata['publishDate'].strftime('%Y-%m-%d'),
+                        # 'web': False,
+                        # "source": "Finfast"
+                    }
+                ))
+            # print(doc_lst)
+            return doc_lst
+        except RuntimeError as e:
+            logger.error("Error retrieving documents: %s", e)
+            return []
