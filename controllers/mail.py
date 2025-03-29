@@ -180,9 +180,8 @@ def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%
     Returns:
         None
     """
-    subject_query = "subject:Re: Smartcareers algorithm debug and improvement'"
-    emails = search_emails(subject_query)
-    # emails = search_emails(query)
+    # query = "subject:Re: Smartcareers algorithm debug and improvement'"
+    emails = search_emails(query)
     if emails:
         print("Found %d emails:\n", len(emails))
         logger.info("Found %d emails after two_weeks_ago:\n", len(emails))
