@@ -1,20 +1,36 @@
-"""Module to run the mail collection process."""
-from dotenv import load_dotenv
+"""Module to handle the main FastAPI application and its endpoints."""
+import logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from router import main
 
-# from controllers import mail
-from chain import RAGChain
-from retriever import DocRetriever
 
-load_dotenv()
+app = FastAPI(docs_url="/")
 
-if __name__ == "__main__":
-    # mail.collect()
-    # mail.get_documents()
-    req = {
-        "query": "Just give me an update?",
-    }
-    chain = RAGChain(DocRetriever(req=req))
-    result = chain.invoke({"input": req['query']},
-                       config={"configurable": {"session_id": "20250301"}})
-    print(result)
-    print(result.get("answer"))
+app.include_router(main.router, tags=["content"])
+
+origins = [
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials = True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
+logging.getLogger().setLevel(logging.ERROR)
+
+
+@app.get("/_health")
+def health():
+    """
+    Returns the health status of the application.
+
+    :return: A string "OK" indicating the health status.
+    """
+    return "OK"

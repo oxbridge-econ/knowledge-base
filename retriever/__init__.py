@@ -23,9 +23,9 @@ class DocRetriever(BaseRetriever):
                 list: A list of Document objects with relevant metadata.
     """
     retriever: VectorStoreRetriever = None
-    k: int = 5
+    k: int = 3
 
-    def __init__(self, req, k: int = 2) -> None:
+    def __init__(self, req, k: int = 3) -> None:
         super().__init__()
         # _filter={}
         # if req.site != []:
@@ -52,7 +52,7 @@ class DocRetriever(BaseRetriever):
                     metadata = {
                         "content": doc.page_content,
                         # "id": doc.metadata['id'],
-                        # "title": doc.metadata['title'],
+                        "title": doc.metadata['subject'],
                         # "site": doc.metadata['site'],
                         # "link": doc.metadata['link'],
                         # "publishDate": doc.metadata['publishDate'].strftime('%Y-%m-%d'),
