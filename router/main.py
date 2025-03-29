@@ -37,11 +37,11 @@ async def stream(query: ReqData):
 #     """
 #     Endpoint to retrieve chat history.
 
-#     This endpoint handles POST requests to the "/chat/history" URL. It accepts a 
+#     This endpoint handles POST requests to the "/chat/history" URL. It accepts a
 #     ChatHistory object as input and returns the chat history.
 
 #     Args:
-#         chat_history (ChatHistory): The chat history object containing the details 
+#         chat_history (ChatHistory): The chat history object containing the details
 #         of the chat to be retrieved.
 
 #     Returns:

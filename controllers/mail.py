@@ -40,7 +40,7 @@ def list_emails(messages):
     """List emails from the search results and download attachments."""
     ids = []
     documents = []
-    for message in messages[:100]:
+    for message in messages:
         msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
         metadata = {}
         for header in msg['payload']['headers']:
@@ -54,8 +54,10 @@ def list_emails(messages):
                 metadata['cc'] = header['value']
         metadata['date'] = datetime.fromtimestamp(
             int(msg['internalDate']) / 1000).strftime("%d/%m/%Y %H:%M:%S")
+        logger.info(metadata, msg['id'])
         body = ""
         if 'parts' in msg['payload']:
+            attachment_documents = []
             for part in msg['payload']['parts']:
                 if part['filename']:
                     attachment_id = part['body']['attachmentId']
@@ -67,15 +69,12 @@ def list_emails(messages):
                     with open(path, 'wb') as f:
                         f.write(file_data)
                     if part['filename'].endswith('.pdf'):
-                        attachment_documents = PyPDFLoader(path).load()
-                        documents = documents + attachment_documents
+                        attachment_documents = attachment_documents + PyPDFLoader(path).load()
                     if part['filename'].endswith('.png'):
-                        attachment_documents = UnstructuredImageLoader(path).load()
-                        documents = documents + attachment_documents
+                        attachment_documents = attachment_documents + UnstructuredImageLoader(path).load()
                     if part['filename'].endswith('.csv'):
-                        attachment_documents = CSVLoader(path).load()
-                        documents = documents + attachment_documents
-            for index, document in enumerate(documents):
+                        attachment_documents = attachment_documents + CSVLoader(path).load()
+            for index, document in enumerate(attachment_documents):
                 _id = f"{msg['id']}_{index}"
                 if 'source' in document.metadata:
                     document.metadata['source'] = document.metadata['source'].replace(f"./{ATTACHMENTS_DIR}/", "")
@@ -104,6 +103,7 @@ def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%
     """
     emails = search_emails(query)
     if emails:
+        print("Found %d emails:\n", len(emails))
         logger.info("Found %d emails after two_weeks_ago:\n", len(emails))
         return f"{len(list_emails(emails))} emails added to the collection."
     else:

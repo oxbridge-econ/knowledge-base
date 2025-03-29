@@ -28,6 +28,7 @@ async def generate(req: ReqData):
         if 'answer' in chunk:
             yield "event: answer\n"
             yield f"data: {json.dumps(chunk)}\n\n"
+            print(chunk['answer'], end="", flush=True)
         elif 'context' in chunk:
             for context in chunk['context']:
                 yield "event: context\n"
