@@ -54,7 +54,8 @@ def list_emails(messages):
                 metadata['cc'] = header['value']
         metadata['date'] = datetime.fromtimestamp(
             int(msg['internalDate']) / 1000).strftime("%d/%m/%Y %H:%M:%S")
-        logger.info(metadata, msg['id'])
+        print.info(metadata, msg['id'])
+        print("-"*100)
         body = ""
         if 'parts' in msg['payload']:
             attachment_documents = []
@@ -74,13 +75,22 @@ def list_emails(messages):
                         attachment_documents = attachment_documents + UnstructuredImageLoader(path).load()
                     if part['filename'].endswith('.csv'):
                         attachment_documents = attachment_documents + CSVLoader(path).load()
+            ids = []
+            documents = []
             for index, document in enumerate(attachment_documents):
                 _id = f"{msg['id']}_{index}"
                 if 'source' in document.metadata:
                     document.metadata['source'] = document.metadata['source'].replace(f"./{ATTACHMENTS_DIR}/", "")
+                print(document.metadata)
                 document.metadata.update(metadata)
+                print(document.metadata)
                 ids.append(_id)
+                print(_id)
+                print("*"*100)
+                vectorstore.add_documents(documents=documents, ids=ids)
         else:
+            ids = []
+            documents = []
             body = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
             body = re.sub(r'<[^>]+>', '', body)  # Remove HTML tags
             documents.append(Document(
@@ -88,7 +98,9 @@ def list_emails(messages):
                 metadata=metadata
             ))
             ids.append(msg['id'])
-    return vectorstore.add_documents(documents=documents, ids=ids)
+            print(msg['id'])
+            print("!"*100)
+            vectorstore.add_documents(documents=documents, ids=ids)
 
 def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%m/%d')):
     """
@@ -105,7 +117,7 @@ def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%
     if emails:
         print("Found %d emails:\n", len(emails))
         logger.info("Found %d emails after two_weeks_ago:\n", len(emails))
-        return f"{len(list_emails(emails))} emails added to the collection."
+        return f"{len(emails)} emails added to the collection."
     else:
         logger.info("No emails found after two weeks ago.")
 
@@ -124,6 +136,7 @@ def get_documents():
         'documents': data['documents'],
         'metadatas': data['metadatas']
     })
+    df.to_excel('collection_data.xlsx', index=False)
     df = pd.concat(
         [df.drop('metadatas', axis=1), df['metadatas'].apply(pd.Series)],
-        axis=1).to_csv('collection_data.csv', index=False)
+        axis=1).to_excel('collection_data_expand.xlsx', index=False)
