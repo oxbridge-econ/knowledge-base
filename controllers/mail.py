@@ -4,11 +4,13 @@ import re
 import base64
 from datetime import datetime, timedelta
 from venv import logger
+from ics import Calendar
 
 import pandas as pd
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders.image import UnstructuredImageLoader
+from langchain_community.document_loaders import UnstructuredExcelLoader
 from langchain_community.document_loaders.csv_loader import CSVLoader
 
 from models.chroma import vectorstore
@@ -54,12 +56,36 @@ def list_emails(messages):
                 metadata['cc'] = header['value']
         metadata['date'] = datetime.fromtimestamp(
             int(msg['internalDate']) / 1000).strftime("%d/%m/%Y %H:%M:%S")
-        print.info(metadata, msg['id'])
-        print("-"*100)
-        body = ""
-        if 'parts' in msg['payload']:
-            attachment_documents = []
+        metadata['msg_id'] = msg['id']
+        print(metadata)
+        print(msg['payload']['mimeType'])
+        # body = ""
+        ids = []
+        documents = []
+        if msg['payload']['mimeType'] in ['multipart/alternative', 'multipart/related', 'multipart/mixed']:
+            minetype = []
+            # attach_docs = []
             for part in msg['payload']['parts']:
+                print("minetype: ", part['mimeType'])
+                minetype.append(part['mimeType'])
+                if part['mimeType'] == 'text/plain' and 'text/html' not in minetype:
+                    body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                    body = re.sub(r'<[^>]+>', '', body)  # Remove HTML tags
+                    metadata['minetype'] = part['mimeType']
+                    documents.append(Document(
+                        page_content=body,
+                        metadata=metadata
+                    ))
+                    ids.append(msg['id'])
+                elif part['mimeType'] == 'text/html' and 'text/plain' not in minetype:
+                    body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                    body = re.sub(r'<[^>]+>', '', body)
+                    metadata['minetype'] = part['mimeType']
+                    documents.append(Document(
+                        page_content=body,
+                        metadata=metadata
+                    ))
+                    ids.append(msg['id'])
                 if part['filename']:
                     attachment_id = part['body']['attachmentId']
                     logger.info("Downloading attachment: %s", part['filename'])
@@ -69,37 +95,78 @@ def list_emails(messages):
                     path = os.path.join(".", ATTACHMENTS_DIR, part['filename'])
                     with open(path, 'wb') as f:
                         f.write(file_data)
-                    if part['filename'].endswith('.pdf'):
-                        attachment_documents = attachment_documents + PyPDFLoader(path).load()
-                    if part['filename'].endswith('.png'):
-                        attachment_documents = attachment_documents + UnstructuredImageLoader(path).load()
-                    if part['filename'].endswith('.csv'):
-                        attachment_documents = attachment_documents + CSVLoader(path).load()
-            ids = []
-            documents = []
-            for index, document in enumerate(attachment_documents):
-                _id = f"{msg['id']}_{index}"
-                if 'source' in document.metadata:
-                    document.metadata['source'] = document.metadata['source'].replace(f"./{ATTACHMENTS_DIR}/", "")
-                print(document.metadata)
-                document.metadata.update(metadata)
-                print(document.metadata)
-                ids.append(_id)
-                print(_id)
-                print("*"*100)
-                vectorstore.add_documents(documents=documents, ids=ids)
-        else:
-            ids = []
-            documents = []
+                    if part['mimeType'] == 'application/pdf':
+                        # attach_docs = attach_docs + PyPDFLoader(path).load()
+                        attach_docs = PyPDFLoader(path).load()
+                    elif part['mimeType'] == 'image/png' or part['mimeType'] == 'image/jpeg':
+                        # attach_docs = attach_docs + UnstructuredImageLoader(path).load()
+                        attach_docs = UnstructuredImageLoader(path).load()
+                    elif part['filename'].endswith('.csv'):
+                        # attach_docs = attach_docs + CSVLoader(path).load()
+                        attach_docs = CSVLoader(path).load()
+                    elif part['mimeType'] == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+                        # attach_docs = attach_docs + UnstructuredExcelLoader(path).load()
+                        attach_docs = UnstructuredExcelLoader(path).load()
+                    elif part['mimeType'] == 'application/ics':
+                        with open(path, 'r', encoding='utf-8') as f:
+                            calendar = Calendar(f.read())
+                        for event in calendar.events:
+                            attach_docs.append(Document(
+                                page_content = f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
+                                metadata = {
+                                    "location": event.location,
+                                    "created": event.created.strftime("%d/%m/%Y %H:%M:%S"),
+                                    "last_modified": event.last_modified.strftime("%d/%m/%Y %H:%M:%S"),
+                                    "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
+                                    "end": event.end.strftime("%d/%m/%Y %H:%M:%S")
+                                }
+                            ))
+                    if os.path.exists(path):
+                        os.remove(path)
+                    for index, document in enumerate(attach_docs):
+                        _id = f"{msg['id']}_{attachment_id}_{index}"
+                        print(document.metadata)
+                        document.metadata['minetype'] = part['mimeType']
+                        if 'page_label' in document.metadata:
+                            document.metadata['page'] = document.metadata['page_label']
+                        document.metadata['attachment'] = part['filename']
+                        for key in ['creationdate', 'total_pages', 'creator', 'producer', 'moddate', 'page_label', 'source']:
+                            document.metadata.pop(key, None)
+                        document.metadata.update(metadata)
+                        print(document.metadata)
+                        print("-"*100)
+                        documents.append(document)
+                        ids.append(_id)
+            # for index, document in enumerate(attach_docs):
+            #     _id = f"{msg['id']}_{index}"
+            #     # if 'source' in document.metadata:
+            #         # document.metadata['source'] = document.metadata['source'].replace(f"./{ATTACHMENTS_DIR}/", "")
+            #         # document.metadata['minetype'] = part['mimeType']
+            #     document.metadata.update(metadata)
+            #     documents.append(document)
+            #     ids.append(_id)
+        elif msg['payload']['mimeType'] == 'text/plain' and 'data' in msg['payload']['body']:
             body = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
-            body = re.sub(r'<[^>]+>', '', body)  # Remove HTML tags
+            body = re.sub(r'<[^>]+>', '', body)
+            metadata['minetype'] = msg['payload']['mimeType']
             documents.append(Document(
                 page_content=body,
                 metadata=metadata
             ))
             ids.append(msg['id'])
-            print(msg['id'])
-            print("!"*100)
+        elif msg['payload']['mimeType'] == 'text/html' and 'data' in msg['payload']['body']:
+            body = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
+            body = re.sub(r'<[^>]+>', '', body)
+            metadata['minetype'] = msg['payload']['mimeType']
+            documents.append(Document(
+                page_content=body,
+                metadata=metadata
+            ))
+            ids.append(msg['id'])
+        if 'multipart/alternative' in minetype and len(minetype) == 1:
+            print("Only multipart/alternative found in the email.")
+        else:
+            print(documents)
             vectorstore.add_documents(documents=documents, ids=ids)
 
 def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%m/%d')):
@@ -113,10 +180,14 @@ def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%
     Returns:
         None
     """
-    emails = search_emails(query)
+    subject_query = "subject:Re: Smartcareers algorithm debug and improvement'"
+    emails = search_emails(subject_query)
+    # emails = search_emails(query)
     if emails:
         print("Found %d emails:\n", len(emails))
         logger.info("Found %d emails after two_weeks_ago:\n", len(emails))
+        list_emails(emails)
+        logger.info("Listing emails...")
         return f"{len(emails)} emails added to the collection."
     else:
         logger.info("No emails found after two weeks ago.")
