@@ -1,10 +1,8 @@
-name: Sync to Hugging Face hub
+name: Sync to Hugging Face Hub
 
 on:
   push:
     branches: [main]
-
-  # To run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -17,11 +15,11 @@ jobs:
           fetch-depth: 0
           lfs: true  # Enable Git LFS support
 
-      # Install Git LFS to handle large files
+      # Install Git LFS
       - name: Install Git LFS
         run: |
           sudo apt-get update
-          sudo apt-get install git-lfs
+          sudo apt-get install git-lfs -y
           git lfs install
 
       # Set Git user identity
@@ -30,12 +28,25 @@ jobs:
           git config --global user.email "github-actions-bot@users.noreply.github.com"
           git config --global user.name "GitHub Actions Bot"
 
-      # Track large files and push them to the Hugging Face Hub
-      - name: Push to hub
+      # Ensure large files are tracked (only if not already tracked)
+      - name: Track large files with Git LFS
+        run: |
+          if ! grep -q "*.sqlite3" .gitattributes 2>/dev/null; then
+            git lfs track "*.sqlite3"
+            git add .gitattributes
+            git commit -m "Track *.sqlite3 files with Git LFS" || echo "No changes to commit"
+          fi
+
+      # Stage and commit any uncommitted large files
+      - name: Commit large files
+        run: |
+          git add "*.sqlite3"
+          git commit -m "Sync large files to Hugging Face" || echo "No changes to commit"
+
+      # Push to Hugging Face Hub
+      - name: Push to Hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git lfs track "*.sqlite3"  # Replace with the extension(s) of your large files
-          git add .
-          git commit -m "Add large files"
-          git push https://OxbridegeEcon:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox main --force
+          git remote set-url origin https://Oxbridge-Economics:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox
+          git push origin main
