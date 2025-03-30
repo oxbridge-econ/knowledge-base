@@ -15,7 +15,7 @@ from langchain_community.document_loaders import (
     UnstructuredImageLoader,
 )
 
-from models.chroma import vectorstore
+from models.db import vectorstore
 from models.mails import build_gmail_service
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
