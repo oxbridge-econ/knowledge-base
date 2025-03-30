@@ -2,4 +2,4 @@ from controllers import mail
 
 if __name__ == "__main__":
     mail.collect()
-    mail.get_documents()
+    # mail.get_documents()
