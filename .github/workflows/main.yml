@@ -1,9 +1,8 @@
-name: Sync to Hugging Face hub
+name: Sync to Hugging Face Hub
+
 on:
   push:
     branches: [main]
-
-  # to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -13,8 +12,22 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          # lfs: true
-      - name: Push to hub
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions-bot@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      - name: Ensure large files are ignored
+        run: |
+          echo "app/models/chroma/data/chroma.sqlite3" >> .gitignore
+          echo "models/chroma/data/chroma.sqlite3" >> .gitignore
+          git add .gitignore
+          git commit -m "Ignore large sqlite3 files" || echo "No changes to commit"
+
+      - name: Push to Hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://OxbridegeEcon:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox main --force
+        run: |
+          git remote set-url origin https://Oxbridge-Economics:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox
+          git push origin main
