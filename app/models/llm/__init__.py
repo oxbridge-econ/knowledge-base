@@ -1,13 +1,13 @@
 """Module for OpenAI model and embeddings."""
-import os
+# import os
 from typing import List
-import onnxruntime as ort
+# import onnxruntime as ort
 from langchain.embeddings.base import Embeddings
 from sentence_transformers import SentenceTransformer
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-from langchain_huggingface import HuggingFacePipeline
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from huggingface_hub import hf_hub_download
+# from langchain_huggingface import HuggingFacePipeline
+# from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+# from huggingface_hub import hf_hub_download
 
 class GPTModel(AzureChatOpenAI):
     """
@@ -40,66 +40,66 @@ class GPTEmbeddings(AzureOpenAIEmbeddings):
         Inherits all methods from AzureOpenAIEmbeddings.
     """
 
-class Phi4MiniONNXLLM:
-    """
-    A class for interfacing with a pre-trained ONNX model for inference.
+# class Phi4MiniONNXLLM:
+#     """
+#     A class for interfacing with a pre-trained ONNX model for inference.
 
-    Attributes:
-        session (onnxruntime.InferenceSession): The ONNX runtime inference session for the model.
-        input_name (str): The name of the input node in the ONNX model.
-        output_name (str): The name of the output node in the ONNX model.
+#     Attributes:
+#         session (onnxruntime.InferenceSession): The ONNX runtime inference session for the model.
+#         input_name (str): The name of the input node in the ONNX model.
+#         output_name (str): The name of the output node in the ONNX model.
 
-    Methods:
-        __init__(model_path):
-            Initializes the Phi4MiniONNXLLM instance by loading the ONNX model from specified path.
-        
-        __call__(input_ids):
-            Performs inference on the given input data and returns the model's output.
-    """
-    def __init__(self, repo_id, subfolder, onnx_file="model.onnx", weights_file="model.onnx.data"):
-        self.repo_id = repo_id
-        model_path = hf_hub_download(repo_id=repo_id, filename=f"{subfolder}/{onnx_file}")
-        weights_path = hf_hub_download(repo_id=repo_id, filename=f"{subfolder}/{weights_file}")
-        self.session = ort.InferenceSession(model_path)
-        # Verify both files exist
-        print(f"Model path: {model_path}, Exists: {os.path.exists(model_path)}")
-        print(f"Weights path: {weights_path}, Exists: {os.path.exists(weights_path)}")
-        self.input_name = self.session.get_inputs()[0].name
-        self.output_name = self.session.get_outputs()[0].name
+#     Methods:
+#         __init__(model_path):
+#             Initializes the Phi4MiniONNXLLM instance by loading the ONNX model from specified path.
 
-    def __call__(self, input_text):
-        # Assuming input_ids is a tensor or numpy array
-        tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-4-mini-instruct-onnx")
-        inputs = tokenizer(input_text, return_tensors="pt")
-        input_feed = {
-            self.input_name: inputs["input_ids"].numpy(),
-            "attention_mask": inputs["attention_mask"].numpy(),
-            # Add past_key_values if applicable
-        }
-        outputs = self.session.run([self.output_name], input_feed)
-        return outputs
+#         __call__(input_ids):
+#             Performs inference on the given input data and returns the model's output.
+#     """
+#     def __init__(self, repo_id, subfolder, onnx_file="model.onnx", weights_file="model.onnx.data"):
+#         self.repo_id = repo_id
+#         model_path = hf_hub_download(repo_id=repo_id, filename=f"{subfolder}/{onnx_file}")
+#         weights_path = hf_hub_download(repo_id=repo_id, filename=f"{subfolder}/{weights_file}")
+#         self.session = ort.InferenceSession(model_path)
+#         # Verify both files exist
+#         print(f"Model path: {model_path}, Exists: {os.path.exists(model_path)}")
+#         print(f"Weights path: {weights_path}, Exists: {os.path.exists(weights_path)}")
+#         self.input_name = self.session.get_inputs()[0].name
+#         self.output_name = self.session.get_outputs()[0].name
 
-class HuggingfaceModel(HuggingFacePipeline):
-    """
-    HuggingfaceModel is a wrapper class for the Hugging Face text-generation pipeline.
+#     def __call__(self, input_text):
+#         # Assuming input_ids is a tensor or numpy array
+#         tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-4-mini-instruct-onnx")
+#         inputs = tokenizer(input_text, return_tensors="pt")
+#         input_feed = {
+#             self.input_name: inputs["input_ids"].numpy(),
+#             "attention_mask": inputs["attention_mask"].numpy(),
+#             # Add past_key_values if applicable
+#         }
+#         outputs = self.session.run([self.output_name], input_feed)
+#         return outputs
 
-    Attributes:
-        name (str): The name or path of the pre-trained model to load from Hugging Face.
-        max_tokens (int): The maximum number of new tokens to generate in the text output.
-        Defaults to 200.
+# class HuggingfaceModel(HuggingFacePipeline):
+#     """
+#     HuggingfaceModel is a wrapper class for the Hugging Face text-generation pipeline.
 
-    Methods:
-        __init__(name, max_tokens=200):
-            Initializes the HuggingfaceModel with the specified model name and maximum token limit.
-    """
-    def __init__(self, name, max_tokens=500):
-        super().__init__(pipeline=pipeline(
-            "text-generation",
-            model=AutoModelForCausalLM.from_pretrained(name),
-            tokenizer=AutoTokenizer.from_pretrained(name),
-            max_new_tokens=max_tokens
-            )
-        )
+#     Attributes:
+#         name (str): The name or path of the pre-trained model to load from Hugging Face.
+#         max_tokens (int): The maximum number of new tokens to generate in the text output.
+#         Defaults to 200.
+
+#     Methods:
+#         __init__(name, max_tokens=200):
+#             Initializes the HuggingfaceModel with the specified model name and maximum token limit.
+#     """
+#     def __init__(self, name, max_tokens=500):
+#         super().__init__(pipeline=pipeline(
+#             "text-generation",
+#             model=AutoModelForCausalLM.from_pretrained(name),
+#             tokenizer=AutoTokenizer.from_pretrained(name),
+#             max_new_tokens=max_tokens
+#             )
+#         )
 
 class EmbeddingsModel(Embeddings):
     """

@@ -31,4 +31,4 @@ def get():
         str: The generated response from the chat function.
     """
     result = mail.get()
-    return JSONResponse(content={"message": result})
+    return JSONResponse(content= result)

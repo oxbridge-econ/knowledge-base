@@ -209,7 +209,7 @@ def collect(query=(datetime.today() - timedelta(days=21)).strftime("after:%Y/%m/
     Returns:
         None
     """
-    # query = "subject:Re: Smartcareers algorithm debug and improvement'"
+    query = "subject:Re: Smartcareers algorithm debug and improvement'"
     emails = search_emails(query)
     if emails:
         print("Found %d emails:\n", len(emails))
