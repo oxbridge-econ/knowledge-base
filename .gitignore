@@ -177,3 +177,8 @@ attachments
 app/models/chroma/data/
 app/models/chroma/data/chroma.sqlite3
 models/chroma/data/chroma.sqlite3
+app/models/chroma/data/*.bin
+app/models/chroma/data/chroma.sqlite3
+models/chroma/data/*.bin
+models/chroma/_data/chroma.sqlite3
+models/chroma/data/chroma.sqlite3
