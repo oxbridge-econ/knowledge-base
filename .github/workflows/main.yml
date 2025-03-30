@@ -24,12 +24,18 @@ jobs:
           sudo apt-get install git-lfs
           git lfs install
 
-      # Push the files to the Hugging Face Hub
+      # Set Git user identity
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions-bot@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      # Track large files and push them to the Hugging Face Hub
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git lfs track "*.sqlite3"  # Replace with the extension(s) of your large files, e.g., "*.bin"
+          git lfs track "*.sqlite3"  # Replace with the extension(s) of your large files
           git add .
           git commit -m "Add large files"
           git push https://OxbridegeEcon:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox main --force
