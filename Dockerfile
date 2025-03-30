@@ -7,6 +7,9 @@ COPY . .
 # Set the working directory to /app
 WORKDIR /app
 
+# Create a cache directory and set permissions
+RUN mkdir -p /app/cache && chmod -R 777 /app/cache
+
 # Install requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
