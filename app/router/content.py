@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from schema import ReqData
 from utils import generate
 
-router = APIRouter()
+router = APIRouter(tags=["content"])
 
 @router.post("/stream")
 async def stream(query: ReqData):

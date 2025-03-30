@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from controllers import mail
 
-router = APIRouter(prefix="/mail", tags=["Mail"])
+router = APIRouter(prefix="/mail", tags=["mail"])
 
 @router.post("")
 def collect():

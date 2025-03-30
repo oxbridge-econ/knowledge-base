@@ -7,8 +7,8 @@ from router import content, mail
 
 app = FastAPI(docs_url="/")
 
-app.include_router(content.router, tags=["content"])
-app.include_router(mail.router, tags=["mail"])
+app.include_router(content.router)
+app.include_router(mail.router)
 
 origins = [
     "*"
