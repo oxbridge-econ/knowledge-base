@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Create a cache directory and set permissions
 RUN mkdir -p /app/cache && chmod -R 777 /app/cache
-RUN mkdir -p /app/cache && chmod -R 777 /nltk_data
+RUN mkdir -p /app/cache && chmod -R 777 app/nltk_data
 
 # Install requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
