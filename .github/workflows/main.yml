@@ -9,26 +9,22 @@ jobs:
   sync-to-hub:
     runs-on: ubuntu-latest
     steps:
-      # Checkout the repository with Git LFS support
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          lfs: true  # Enable Git LFS support
+          lfs: true
 
-      # Install Git LFS
       - name: Install Git LFS
         run: |
           sudo apt-get update
           sudo apt-get install git-lfs -y
           git lfs install
 
-      # Set Git user identity
       - name: Configure Git
         run: |
           git config --global user.email "github-actions-bot@users.noreply.github.com"
           git config --global user.name "GitHub Actions Bot"
 
-      # Ensure large files are tracked (only if not already tracked)
       - name: Track large files with Git LFS
         run: |
           if ! grep -q "*.sqlite3" .gitattributes 2>/dev/null; then
@@ -37,16 +33,15 @@ jobs:
             git commit -m "Track *.sqlite3 files with Git LFS" || echo "No changes to commit"
           fi
 
-      # Stage and commit any uncommitted large files
       - name: Commit large files
         run: |
           git add "*.sqlite3"
           git commit -m "Sync large files to Hugging Face" || echo "No changes to commit"
 
-      # Push to Hugging Face Hub
       - name: Push to Hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git remote set-url origin https://Oxbridge-Economics:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox
+          git pull origin main --rebase  # Fetch and rebase remote changes
           git push origin main
