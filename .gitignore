@@ -175,3 +175,5 @@ cython_debug/
 
 attachments
 app/models/chroma/data/
+app/models/chroma/data/chroma.sqlite3
+models/chroma/data/chroma.sqlite3
