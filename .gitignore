@@ -174,4 +174,4 @@ cython_debug/
 .pypirc
 
 attachments
-
+app/models/chroma/data/
