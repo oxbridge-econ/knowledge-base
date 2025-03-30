@@ -1,22 +1,13 @@
 # Use the official Python 3.10.9 image
 FROM python:3.10.9
 
-# Install dependencies for building SQLite
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    wget \
-    libsqlite3-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y sqlite3 libsqlite3-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install SQLite 3.35.0 or higher from source
-RUN wget https://www.sqlite.org/2025/sqlite-autoconf-3410000.tar.gz && \
-    tar -xzf sqlite-autoconf-3410000.tar.gz && \
-    cd sqlite-autoconf-3410000 && \
-    ./configure && \
-    make && \
-    make install && \
-    cd .. && \
-    rm -rf sqlite-autoconf-3410000 sqlite-autoconf-3410000.tar.gz
+# Verify SQLite3 installation
+RUN sqlite3 --version
 
 # Verify SQLite version
 RUN sqlite3 --version

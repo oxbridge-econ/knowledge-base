@@ -78,7 +78,6 @@ def list_emails(messages):
     ids = []
     documents = []
     for message in messages:
-        user_id = service.users().getProfile(userId="me").execute().get("emailAddress")
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
         for header in msg["payload"]["headers"]:
@@ -93,7 +92,7 @@ def list_emails(messages):
         metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000).strftime(
             "%d/%m/%Y %H:%M:%S"
         )
-        metadata["user_id"] = user_id
+        metadata["user_id"] = service.users().getProfile(userId="me").execute().get("emailAddress")
         metadata["msg_id"] = msg["id"]
         print(metadata, msg["payload"]["mimeType"])
         ids = []
