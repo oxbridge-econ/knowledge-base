@@ -1,8 +1,9 @@
-name: Sync to Hugging Face Hub
-
+name: Sync to Hugging Face hub
 on:
   push:
     branches: [main]
+
+  # to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -12,34 +13,8 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          lfs: true
-
-      - name: Install Git LFS
-        run: |
-          sudo apt-get update
-          sudo apt-get install git-lfs -y
-          git lfs install
-
-      - name: Configure Git
-        run: |
-          git config --global user.email "github-actions-bot@users.noreply.github.com"
-          git config --global user.name "GitHub Actions Bot"
-
-      - name: Ensure .gitattributes is correct
-        run: |
-          echo "*.sqlite3 filter=lfs diff=lfs merge=lfs -text" > .gitattributes
-          git add .gitattributes
-          git commit -m "Ensure correct LFS tracking in .gitattributes" || echo "No changes to commit"
-
-      - name: Commit large files
-        run: |
-          git add "*.sqlite3"
-          git commit -m "Sync large files to Hugging Face" || echo "No changes to commit"
-
-      - name: Push to Hub
+          # lfs: true
+      - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          git remote set-url origin https://Oxbridge-Economics:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox
-          git pull origin main --rebase || (git rebase --abort && git push origin main --force)  # Fallback to force push if rebase fails
-          git push origin main
+        run: git push https://OxbridegeEcon:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox main --force
