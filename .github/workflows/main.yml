@@ -43,5 +43,4 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git remote set-url origin https://Oxbridge-Economics:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox
-          git pull origin main --rebase  # Fetch and rebase remote changes
-          git push origin main
+          git push origin main --force
