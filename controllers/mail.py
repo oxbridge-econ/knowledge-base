@@ -39,7 +39,37 @@ def search_emails(query):
     return messages
 
 def list_emails(messages):
-    """List emails from the search results and download attachments."""
+    """
+    Processes a list of email messages, extracts metadata, decodes content, and handles attachments.
+
+    Args:
+        messages (list): A list of email message dictionaries, where each dictionary contains 
+                         at least an 'id' key representing the email's unique identifier.
+
+    Returns:
+        None: The function processes the emails and adds the extracted documents to a vector store.
+
+    Functionality:
+        - Retrieves email details using the Gmail API.
+        - Extracts metadata such as sender, recipient, subject, CC, and date.
+        - Decodes email content in plain text or HTML format.
+        - Handles multipart emails, including attachments.
+        - Processes attachments based on their MIME type:
+            - PDF files are loaded using PyPDFLoader.
+            - Images (PNG, JPEG) are loaded using UnstructuredImageLoader.
+            - CSV files are loaded using CSVLoader.
+            - Excel files are loaded using UnstructuredExcelLoader.
+            - Calendar files (ICS) are parsed to extract event details.
+        - Removes HTML tags from email content.
+        - Stores processed documents and metadata in a vector store.
+        - Deletes temporary files created during attachment processing.
+
+    Notes:
+        - The function assumes the existence of a global `service` object for Gmail API interactions.
+        - The `vectorstore.add_documents` method is used to store the processed documents.
+        - Attachments are temporarily saved in a directory specified by `ATTACHMENTS_DIR` and deleted after processing.
+        - The function logs information about attachments being downloaded.
+    """
     ids = []
     documents = []
     for message in messages:
@@ -57,30 +87,29 @@ def list_emails(messages):
         metadata['date'] = datetime.fromtimestamp(
             int(msg['internalDate']) / 1000).strftime("%d/%m/%Y %H:%M:%S")
         metadata['msg_id'] = msg['id']
-        print(metadata)
-        print(msg['payload']['mimeType'])
-        # body = ""
+        print(metadata, msg['payload']['mimeType'])
         ids = []
         documents = []
+        mimeType = []
         if msg['payload']['mimeType'] in ['multipart/alternative', 'multipart/related', 'multipart/mixed']:
-            minetype = []
-            # attach_docs = []
+            mimeType = []
+            attach_docs = []
             for part in msg['payload']['parts']:
-                print("minetype: ", part['mimeType'])
-                minetype.append(part['mimeType'])
-                if part['mimeType'] == 'text/plain' and 'text/html' not in minetype:
+                print("mimeType: ", part['mimeType'])
+                mimeType.append(part['mimeType'])
+                if part['mimeType'] == 'text/plain' and 'text/html' not in mimeType:
                     body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
                     body = re.sub(r'<[^>]+>', '', body)  # Remove HTML tags
-                    metadata['minetype'] = part['mimeType']
+                    metadata['mimeType'] = part['mimeType']
                     documents.append(Document(
                         page_content=body,
                         metadata=metadata
                     ))
                     ids.append(msg['id'])
-                elif part['mimeType'] == 'text/html' and 'text/plain' not in minetype:
+                elif part['mimeType'] == 'text/html' and 'text/plain' not in mimeType:
                     body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
                     body = re.sub(r'<[^>]+>', '', body)
-                    metadata['minetype'] = part['mimeType']
+                    metadata['mimeType'] = part['mimeType']
                     documents.append(Document(
                         page_content=body,
                         metadata=metadata
@@ -96,24 +125,22 @@ def list_emails(messages):
                     with open(path, 'wb') as f:
                         f.write(file_data)
                     if part['mimeType'] == 'application/pdf':
-                        # attach_docs = attach_docs + PyPDFLoader(path).load()
                         attach_docs = PyPDFLoader(path).load()
                     elif part['mimeType'] == 'image/png' or part['mimeType'] == 'image/jpeg':
-                        # attach_docs = attach_docs + UnstructuredImageLoader(path).load()
                         attach_docs = UnstructuredImageLoader(path).load()
                     elif part['filename'].endswith('.csv'):
-                        # attach_docs = attach_docs + CSVLoader(path).load()
                         attach_docs = CSVLoader(path).load()
                     elif part['mimeType'] == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-                        # attach_docs = attach_docs + UnstructuredExcelLoader(path).load()
                         attach_docs = UnstructuredExcelLoader(path).load()
                     elif part['mimeType'] == 'application/ics':
                         with open(path, 'r', encoding='utf-8') as f:
                             calendar = Calendar(f.read())
                         for event in calendar.events:
-                            attach_docs.append(Document(
+                            documents.append(Document(
                                 page_content = f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
                                 metadata = {
+                                    "attachment": part['filename'],
+                                    "mimeType": part['mimeType'],
                                     "location": event.location,
                                     "created": event.created.strftime("%d/%m/%Y %H:%M:%S"),
                                     "last_modified": event.last_modified.strftime("%d/%m/%Y %H:%M:%S"),
@@ -121,34 +148,22 @@ def list_emails(messages):
                                     "end": event.end.strftime("%d/%m/%Y %H:%M:%S")
                                 }
                             ))
+                            ids.append(f"{msg['id']}_{attachment_id}")
                     if os.path.exists(path):
                         os.remove(path)
-                    for index, document in enumerate(attach_docs):
-                        _id = f"{msg['id']}_{attachment_id}_{index}"
-                        print(document.metadata)
-                        document.metadata['minetype'] = part['mimeType']
+                    for index, document in enumerate(attach_docs or []):
+                        document.metadata['mimeType'] = part['mimeType']
                         if 'page_label' in document.metadata:
                             document.metadata['page'] = document.metadata['page_label']
                         document.metadata['attachment'] = part['filename']
-                        for key in ['creationdate', 'total_pages', 'creator', 'producer', 'moddate', 'page_label', 'source']:
-                            document.metadata.pop(key, None)
+                        document.metadata = {key: value for key, value in document.metadata.items() if key in ['attachment', 'page']}
                         document.metadata.update(metadata)
-                        print(document.metadata)
-                        print("-"*100)
                         documents.append(document)
-                        ids.append(_id)
-            # for index, document in enumerate(attach_docs):
-            #     _id = f"{msg['id']}_{index}"
-            #     # if 'source' in document.metadata:
-            #         # document.metadata['source'] = document.metadata['source'].replace(f"./{ATTACHMENTS_DIR}/", "")
-            #         # document.metadata['minetype'] = part['mimeType']
-            #     document.metadata.update(metadata)
-            #     documents.append(document)
-            #     ids.append(_id)
+                        ids.append(f"{msg['id']}_{attachment_id}_{index}")
         elif msg['payload']['mimeType'] == 'text/plain' and 'data' in msg['payload']['body']:
             body = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
             body = re.sub(r'<[^>]+>', '', body)
-            metadata['minetype'] = msg['payload']['mimeType']
+            metadata['mimeType'] = msg['payload']['mimeType']
             documents.append(Document(
                 page_content=body,
                 metadata=metadata
@@ -157,16 +172,15 @@ def list_emails(messages):
         elif msg['payload']['mimeType'] == 'text/html' and 'data' in msg['payload']['body']:
             body = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
             body = re.sub(r'<[^>]+>', '', body)
-            metadata['minetype'] = msg['payload']['mimeType']
+            metadata['mimeType'] = msg['payload']['mimeType']
             documents.append(Document(
                 page_content=body,
                 metadata=metadata
             ))
             ids.append(msg['id'])
-        if 'multipart/alternative' in minetype and len(minetype) == 1:
+        if 'multipart/alternative' in mimeType and len(mimeType) == 1:
             print("Only multipart/alternative found in the email.")
         else:
-            print(documents)
             vectorstore.add_documents(documents=documents, ids=ids)
 
 def collect(query = (datetime.today() - timedelta(days=21)).strftime('after:%Y/%m/%d')):
@@ -210,3 +224,20 @@ def get_documents():
     df = pd.concat(
         [df.drop('metadatas', axis=1), df['metadatas'].apply(pd.Series)],
         axis=1).to_excel('collection_data_expand.xlsx', index=False)
+
+def get():
+    """
+    Main function to list emails from the database.
+
+    This function lists all emails stored in the database.
+
+    Returns:
+        None
+    """
+    data = vectorstore.get()
+    df = pd.DataFrame({
+        'id': data['ids'],
+        'documents': data['documents'],
+        'metadatas': data['metadatas']
+    })
+    return df.to_dict(orient='records')

@@ -19,6 +19,19 @@ async def stream(query: ReqData):
     """
     return StreamingResponse(generate(query), media_type='text/event-stream')
 
+# @router.post("/list")
+# def chat(query: ReqData):
+#     """
+#     Handles the chat POST request.
+
+#     Args:
+#         query (ReqData): The request data containing the query parameters.
+
+#     Returns:
+#         str: The generated response from the chat function.
+#     """
+#     return generate(query)
+
 # # @router.post("/followup")
 # # def follow_up(req: ReqFollowUp):
 # #     """

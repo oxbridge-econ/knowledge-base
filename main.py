@@ -2,12 +2,13 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from router import main
+from router import content, mail
 
 
 app = FastAPI(docs_url="/")
 
-app.include_router(main.router, tags=["content"])
+app.include_router(content.router, tags=["content"])
+app.include_router(mail.router, tags=["mail"])
 
 origins = [
     "*"

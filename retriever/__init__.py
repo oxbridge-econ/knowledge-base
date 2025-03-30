@@ -1,9 +1,7 @@
 """Module for retrievers that fetch documents from various sources."""
-from importlib import metadata
 from venv import logger
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain_core.documents import Document
 from models.chroma import vectorstore
 
 class DocRetriever(BaseRetriever):
@@ -47,6 +45,7 @@ class DocRetriever(BaseRetriever):
             retrieved_docs = self.retriever.invoke(query)
             # doc_lst = []
             for doc in retrieved_docs:
+                doc.metadata['id'] = doc.id
                 # date = str(doc.metadata['publishDate'])
                 doc.metadata['content'] = doc.page_content
                 # doc_lst.append(Document(
