@@ -1,14 +1,6 @@
 # Use the official Python 3.10.9 image
 FROM python:3.10.9
 
-RUN apt-get update && \
-    apt-get install -y sqlite3 libsqlite3-dev && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Verify SQLite3 installation
-RUN sqlite3 --version
-
 # Copy the current directory contents into the container at /app
 COPY . .
 
