@@ -9,9 +9,6 @@ RUN apt-get update && \
 # Verify SQLite3 installation
 RUN sqlite3 --version
 
-# Verify SQLite version
-RUN sqlite3 --version
-
 # Copy the current directory contents into the container at /app
 COPY . .
 
