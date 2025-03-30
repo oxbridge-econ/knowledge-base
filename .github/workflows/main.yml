@@ -25,13 +25,11 @@ jobs:
           git config --global user.email "github-actions-bot@users.noreply.github.com"
           git config --global user.name "GitHub Actions Bot"
 
-      - name: Track large files with Git LFS
+      - name: Ensure .gitattributes is correct
         run: |
-          if ! grep -q "*.sqlite3" .gitattributes 2>/dev/null; then
-            git lfs track "*.sqlite3"
-            git add .gitattributes
-            git commit -m "Track *.sqlite3 files with Git LFS" || echo "No changes to commit"
-          fi
+          echo "*.sqlite3 filter=lfs diff=lfs merge=lfs -text" > .gitattributes
+          git add .gitattributes
+          git commit -m "Ensure correct LFS tracking in .gitattributes" || echo "No changes to commit"
 
       - name: Commit large files
         run: |
@@ -43,4 +41,5 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git remote set-url origin https://Oxbridge-Economics:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/Mailbox
-          git push origin main --force
+          git pull origin main --rebase || (git rebase --abort && git push origin main --force)  # Fallback to force push if rebase fails
+          git push origin main
