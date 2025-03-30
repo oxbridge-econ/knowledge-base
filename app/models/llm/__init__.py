@@ -115,7 +115,7 @@ class EmbeddingsModel(Embeddings):
         Args:
             model_name (str): The name of the model to be used for sentence transformation.
         """
-        self.model = SentenceTransformer(model_name, cache_folder="/app/cache")
+        self.model = SentenceTransformer(model_name)
 
     def embed_documents(self, documents: List[str]) -> List[List[float]]:
         """

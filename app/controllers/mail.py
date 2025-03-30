@@ -21,7 +21,7 @@ from models.mails import build_gmail_service
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
-ATTACHMENTS_DIR = "attachments"
+ATTACHMENTS_DIR = "cache"
 os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 
 service = build_gmail_service()
