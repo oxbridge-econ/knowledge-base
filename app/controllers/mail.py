@@ -96,24 +96,24 @@ def list_emails(messages):
         print(metadata, msg["payload"]["mimeType"])
         ids = []
         documents = []
-        mimeType = []
+        mime_types = []
         if msg["payload"]["mimeType"] in [
             "multipart/alternative",
             "multipart/related",
             "multipart/mixed",
         ]:
-            mimeType = []
+            mime_types = []
             attach_docs = []
             for part in msg["payload"]["parts"]:
                 print("mimeType: ", part["mimeType"])
-                mimeType.append(part["mimeType"])
-                if part["mimeType"] == "text/plain" and "text/html" not in mimeType:
+                mime_types.append(part["mimeType"])
+                if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
                     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
                     body = re.sub(r"<[^>]+>", "", body)  # Remove HTML tags
                     metadata["mimeType"] = part["mimeType"]
                     documents.append(Document(page_content=body, metadata=metadata))
                     ids.append(msg["id"])
-                elif part["mimeType"] == "text/html" and "text/plain" not in mimeType:
+                elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
                     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
                     body = re.sub(r"<[^>]+>", "", body)
                     metadata["mimeType"] = part["mimeType"]
@@ -192,7 +192,7 @@ def list_emails(messages):
             metadata["mimeType"] = msg["payload"]["mimeType"]
             documents.append(Document(page_content=body, metadata=metadata))
             ids.append(msg["id"])
-        if "multipart/alternative" in mimeType and len(mimeType) == 1:
+        if "multipart/alternative" in mime_types and len(mime_types) == 1:
             print("Only multipart/alternative found in the email.")
         else:
             vectorstore.add_documents(documents=documents, ids=ids)
