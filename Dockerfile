@@ -14,7 +14,8 @@ RUN mkdir -p /app/cache && chmod -R 777 /app/cache
 
 # Install requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
-# RUN python -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', download_dir='/app/nltk_data'); nltk.download('punkt_tab', download_dir='/app/nltk_data')"
+RUN python3 -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', download_dir='/usr/local/nltk_data')"
+RUN python3 -c "import nltk; nltk.download('punkt_tab', download_dir='/usr/local/nltk_data')"
 
 EXPOSE 7860
 
