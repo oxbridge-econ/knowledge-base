@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from venv import logger
 from ics import Calendar
 
-import pandas as pd
+# import pandas as pd
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
     PyPDFLoader,
@@ -16,7 +16,7 @@ from langchain_community.document_loaders import (
 )
 
 from models.db import vectorstore
-from models.mails import build_gmail_service
+# from models.mails import build_gmail_service
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -24,10 +24,8 @@ EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 ATTACHMENTS_DIR = "cache"
 os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 
-service = build_gmail_service()
-
-
-def search_emails(query):
+# service = build_gmail_service()
+def search_emails(service, query):
     """Search emails based on a query."""
     result = service.users().messages().list(userId="me", q=query).execute()
     messages = []
@@ -43,13 +41,13 @@ def search_emails(query):
     return messages
 
 
-def list_emails(messages):
+def list_emails(service, messages):
     """
     Processes a list of email messages, extracts metadata, decodes content, and handles attachments.
 
     Args:
         messages (list): A list of email message dictionaries, where each dictionary contains
-                         at least an 'id' key representing the email's unique identifier.
+                        at least an 'id' key representing the email's unique identifier.
 
     Returns:
         None: The function processes the emails and adds the extracted documents to a vector store.
@@ -94,7 +92,7 @@ def list_emails(messages):
         )
         metadata["user_id"] = service.users().getProfile(userId="me").execute().get("emailAddress")
         metadata["msg_id"] = msg["id"]
-        print(metadata, msg["payload"]["mimeType"])
+        # print(metadata, msg["payload"]["mimeType"])
         ids = []
         documents = []
         mime_types = []
@@ -199,7 +197,7 @@ def list_emails(messages):
             vectorstore.add_documents(documents=documents, ids=ids)
 
 
-def collect(query=(datetime.today() - timedelta(days=21)).strftime("after:%Y/%m/%d")):
+def collect(service, query=(datetime.today() - timedelta(days=21)).strftime("after:%Y/%m/%d")):
     """
     Main function to search and list emails from Gmail.
 
@@ -211,47 +209,47 @@ def collect(query=(datetime.today() - timedelta(days=21)).strftime("after:%Y/%m/
         None
     """
     query = "subject:Re: Smartcareers algorithm debug and improvement'"
-    emails = search_emails(query)
+    emails = search_emails(service, query)
     if emails:
         print("Found %d emails:\n", len(emails))
         logger.info("Found %d emails after two_weeks_ago:\n", len(emails))
-        list_emails(emails)
+        list_emails(service, emails)
         logger.info("Listing emails...")
         return f"{len(emails)} emails added to the collection."
     else:
         logger.info("No emails found after two weeks ago.")
 
 
-def get_documents():
-    """
-    Main function to list emails from the database.
+# def get_documents(self):
+#     """
+#     Main function to list emails from the database.
 
-    This function lists all emails stored in the database.
+#     This function lists all emails stored in the database.
 
-    Returns:
-        None
-    """
-    data = vectorstore.get()
-    df = pd.DataFrame(
-        {"ids": data["ids"], "documents": data["documents"], "metadatas": data["metadatas"]}
-    )
-    df.to_excel("collection_data.xlsx", index=False)
-    df = pd.concat(
-        [df.drop("metadatas", axis=1), df["metadatas"].apply(pd.Series)], axis=1
-    ).to_excel("collection_data_expand.xlsx", index=False)
+#     Returns:
+#         None
+#     """
+#     data = vectorstore.get()
+#     df = pd.DataFrame(
+#         {"ids": data["ids"], "documents": data["documents"], "metadatas": data["metadatas"]}
+#     )
+#     df.to_excel("collection_data.xlsx", index=False)
+#     df = pd.concat(
+#         [df.drop("metadatas", axis=1), df["metadatas"].apply(pd.Series)], axis=1
+#     ).to_excel("collection_data_expand.xlsx", index=False)
 
 
-def get():
-    """
-    Main function to list emails from the database.
+# def get(self):
+#     """
+#     Main function to list emails from the database.
 
-    This function lists all emails stored in the database.
+#     This function lists all emails stored in the database.
 
-    Returns:
-        None
-    """
-    data = vectorstore.get()
-    df = pd.DataFrame(
-        {"id": data["ids"], "documents": data["documents"], "metadatas": data["metadatas"]}
-    )
-    return df.to_dict(orient="records")
+#     Returns:
+#         None
+#     """
+#     data = vectorstore.get()
+#     df = pd.DataFrame(
+#         {"id": data["ids"], "documents": data["documents"], "metadatas": data["metadatas"]}
+#     )
+#     return df.to_dict(orient="records")
