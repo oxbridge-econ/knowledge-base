@@ -26,16 +26,14 @@ class DocRetriever(BaseRetriever):
 
     def __init__(self, req, k: int = 10) -> None:
         super().__init__()
-        # _filter={}
-        # if req.site != []:
-        #     _filter.update({"site": {"$in": req.site}})
-        # if req.id != []:
-        #     _filter.update({"id": {"$in": req.id}})
+        _filter={}
+        _filter.update({"user_id": req.user_id})
+        print(_filter)
         self.retriever = vectorstore.as_retriever(
             search_type='similarity',
             search_kwargs={
                 "k": k,
-                # "filter": _filter,
+                "filter": _filter,
                 # "score_threshold": .1
             }
         )
@@ -44,6 +42,7 @@ class DocRetriever(BaseRetriever):
         try:
             retrieved_docs = self.retriever.invoke(query)
             # doc_lst = []
+            print(retrieved_docs)
             for doc in retrieved_docs:
                 doc.metadata['id'] = doc.id
                 # date = str(doc.metadata['publishDate'])
