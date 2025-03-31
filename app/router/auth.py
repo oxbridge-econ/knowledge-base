@@ -90,6 +90,6 @@ async def google_callback(code: str, request: Request):
     # ))
     service = build("gmail", "v1", credentials=credentials)
     profile = service.users().getProfile(userId="me").execute()
-    with open(f"{profile['emailAddress']}.pickle", "wb") as token:
+    with open(f"cache/{profile['emailAddress']}.pickle", "wb") as token:
         pickle.dump(credentials, token)
     return JSONResponse(profile)

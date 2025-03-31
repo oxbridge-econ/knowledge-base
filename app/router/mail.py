@@ -22,7 +22,7 @@ def collect(email: str, request: Request):
         str: The generated response from the chat function.
     """
     if os.path.exists(f"{email}.pickle"):
-        with open(f"{email}.pickle", "rb") as token:
+        with open(f"cache/{email}.pickle", "rb") as token:
             credentials = pickle.load(token)
     else:
         cred_dict = request.state.session.get("credential")
