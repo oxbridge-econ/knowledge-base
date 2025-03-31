@@ -21,7 +21,7 @@ def collect(email: str, request: Request):
     Returns:
         str: The generated response from the chat function.
     """
-    if os.path.exists(f"{email}.pickle"):
+    if os.path.exists(f"cache/{email}.pickle"):
         with open(f"cache/{email}.pickle", "rb") as token:
             credentials = pickle.load(token)
     else:
