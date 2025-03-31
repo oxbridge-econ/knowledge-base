@@ -45,6 +45,27 @@ async def get_auth_url():
 
 @router.get("/auth/google/callback")
 async def google_callback(code: str, request: Request):
+    """
+    Handles the Google OAuth2 callback by exchanging the authorization code for credentials,
+    retrieving the user's Gmail profile, and saving the credentials to a file.
+
+    Args:
+        code (str): The authorization code returned by Google's OAuth2 server.
+        request (Request): The incoming HTTP request object.
+
+    Returns:
+        JSONResponse: A JSON response containing the user's Gmail profile information.
+
+    Side Effects:
+        - Saves the user's credentials to a pickle file named after their email address.
+        - Stores the credentials in the session state of the request.
+
+    Dependencies:
+        - google_auth_oauthlib.flow.InstalledAppFlow: Used to handle the OAuth2 flow.
+        - googleapiclient.discovery.build: Used to build the Gmail API service.
+        - json: Used to serialize and deserialize credentials.
+        - pickle: Used to save credentials to a file.
+    """
     flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
     flow.redirect_uri = REDIRECT_URI
     flow.fetch_token(code=code)
@@ -69,7 +90,6 @@ async def google_callback(code: str, request: Request):
     # ))
     service = build("gmail", "v1", credentials=credentials)
     profile = service.users().getProfile(userId="me").execute()
-    print(({"profile": profile}))
     with open(f"{profile['emailAddress']}.pickle", "wb") as token:
         pickle.dump(credentials, token)
     return JSONResponse(profile)

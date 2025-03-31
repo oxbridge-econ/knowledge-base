@@ -62,7 +62,6 @@ class DocRetriever(BaseRetriever):
                 #     #     # "source": "Finfast"
                 #     # }
                 # ))
-            # print(doc_lst)
             return retrieved_docs
         except RuntimeError as e:
             logger.error("Error retrieving documents: %s", e)

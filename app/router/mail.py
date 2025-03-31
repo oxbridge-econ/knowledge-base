@@ -11,7 +11,7 @@ from googleapiclient.discovery import build
 router = APIRouter(prefix="/mail", tags=["mail"])
 
 @router.post("")
-def collect(emailAddress: str, request: Request):
+def collect(email: str, request: Request):
     """
     Handles the chat POST request.
 
@@ -21,9 +21,8 @@ def collect(emailAddress: str, request: Request):
     Returns:
         str: The generated response from the chat function.
     """
-    # emailAddress = req['emailAddress']
-    if os.path.exists(f"{emailAddress}.pickle"):
-        with open(f"{emailAddress}.pickle", "rb") as token:
+    if os.path.exists(f"{email}.pickle"):
+        with open(f"{email}.pickle", "rb") as token:
             credentials = pickle.load(token)
     else:
         cred_dict = request.state.session.get("credential")
