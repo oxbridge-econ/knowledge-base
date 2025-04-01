@@ -30,11 +30,11 @@ class DocRetriever(BaseRetriever):
         _filter.update({"user_id": req.user_id})
         print(_filter)
         self.retriever = vectorstore.as_retriever(
-            search_type='similarity_score_threshold',
+            search_type='similarity',
             search_kwargs={
                 "k": k,
                 "filter": _filter,
-                "score_threshold": .7
+                # "score_threshold": .3
             }
         )
 
