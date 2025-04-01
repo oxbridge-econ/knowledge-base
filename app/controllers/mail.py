@@ -78,7 +78,7 @@ def list_emails(service, messages):
     for message in messages:
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
-        if vectorstore.docstore.contains(msg["id"]):
+        if msg["id"] in vectorstore.index_to_docstore_id:
             logger.info("Email already exists in the database.")
             continue
         for header in msg["payload"]["headers"]:
@@ -215,45 +215,10 @@ def collect(service, query=(datetime.today() - timedelta(days=10)).strftime("aft
     # query = "subject:Re: Smartcareers algorithm debug and improvement'"
     emails = search_emails(service, query)
     if emails:
-        print("Found %d emails:\n", len(emails))
+        logger.info("Found %d emails:\n", len(emails))
         logger.info("Found %d emails after two_weeks_ago:\n", len(emails))
         list_emails(service, emails)
         logger.info("Listing emails...")
         return f"{len(emails)} emails added to the collection."
     else:
         logger.info("No emails found after two weeks ago.")
-
-
-# def get_documents(self):
-#     """
-#     Main function to list emails from the database.
-
-#     This function lists all emails stored in the database.
-
-#     Returns:
-#         None
-#     """
-#     data = vectorstore.get()
-#     df = pd.DataFrame(
-#         {"ids": data["ids"], "documents": data["documents"], "metadatas": data["metadatas"]}
-#     )
-#     df.to_excel("collection_data.xlsx", index=False)
-#     df = pd.concat(
-#         [df.drop("metadatas", axis=1), df["metadatas"].apply(pd.Series)], axis=1
-#     ).to_excel("collection_data_expand.xlsx", index=False)
-
-
-# def get(self):
-#     """
-#     Main function to list emails from the database.
-
-#     This function lists all emails stored in the database.
-
-#     Returns:
-#         None
-#     """
-#     data = vectorstore.get()
-#     df = pd.DataFrame(
-#         {"id": data["ids"], "documents": data["documents"], "metadatas": data["metadatas"]}
-#     )
-#     return df.to_dict(orient="records")
