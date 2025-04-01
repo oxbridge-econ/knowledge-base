@@ -19,6 +19,17 @@ class ReqData(BaseModel):
     user_id: str
     web: Optional[bool] = False
 
+class MailReqData(BaseModel):
+    """
+    MailReqData is a data model representing the structure of a mail request.
+
+    Attributes:
+        email (str): The email address of the sender.
+        query (str): The query or message content sent by the user.
+    """
+    email: str
+    query: str
+
 class ReqFollowUp(BaseModel):
     """
     RequestFollowUp is a Pydantic model that represents a request for follow-up.

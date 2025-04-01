@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from venv import logger
 from ics import Calendar
 
-# import pandas as pd
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
     PyPDFLoader,
@@ -16,7 +15,6 @@ from langchain_community.document_loaders import (
 )
 
 from models.db import vectorstore
-# from models.mails import build_gmail_service
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -78,6 +76,7 @@ def list_emails(service, messages):
     for message in messages:
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
+        logger.info("vectorstore.index_to_docstore_id: %s", vectorstore.index_to_docstore_id)
         if msg["id"] in vectorstore.index_to_docstore_id:
             logger.info("Email already exists in the database.")
             continue

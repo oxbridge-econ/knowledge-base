@@ -8,10 +8,12 @@ from controllers import mail
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from schema import MailReqData
+
 router = APIRouter(prefix="/mail", tags=["mail"])
 
 @router.post("")
-def collect(email: str, request: Request):
+def collect(query: MailReqData, request: Request):
     """
     Handles the chat POST request.
 
@@ -22,8 +24,8 @@ def collect(email: str, request: Request):
         str: The generated response from the chat function.
     """
     try:
-        if os.path.exists(f"cache/{email}.pickle"):
-            with open(f"cache/{email}.pickle", "rb") as token:
+        if os.path.exists(f"cache/{query.email}.pickle"):
+            with open(f"cache/{query.email}.pickle", "rb") as token:
                 credentials = pickle.load(token)
         else:
             cred_dict = request.state.session.get("credential")
@@ -36,7 +38,7 @@ def collect(email: str, request: Request):
                 scopes=cred_dict["scopes"],
             )
         mailservice = build("gmail", "v1", credentials=credentials)
-        mail.collect(mailservice)
+        mail.collect(mailservice, query.query)
         return JSONResponse(content={"message": "Mail collected successfully."})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
