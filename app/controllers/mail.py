@@ -198,7 +198,7 @@ def list_emails(service, messages):
             vectorstore.add_documents(documents=documents, ids=ids)
 
 
-def collect(service, query=(datetime.today() - timedelta(days=21)).strftime("after:%Y/%m/%d")):
+def collect(service, query=(datetime.today() - timedelta(days=10)).strftime("after:%Y/%m/%d")):
     """
     Main function to search and list emails from Gmail.
 
@@ -209,7 +209,7 @@ def collect(service, query=(datetime.today() - timedelta(days=21)).strftime("aft
     Returns:
         None
     """
-    query = "subject:Re: Smartcareers algorithm debug and improvement'"
+    # query = "subject:Re: Smartcareers algorithm debug and improvement'"
     emails = search_emails(service, query)
     if emails:
         print("Found %d emails:\n", len(emails))
