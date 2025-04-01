@@ -22,19 +22,19 @@ class DocRetriever(BaseRetriever):
                 list: A list of Document objects with relevant metadata.
     """
     retriever: VectorStoreRetriever = None
-    k: int = 10
+    k: int = 6
 
-    def __init__(self, req, k: int = 10) -> None:
+    def __init__(self, req, k: int = 6) -> None:
         super().__init__()
         _filter={}
         _filter.update({"user_id": req.user_id})
         print(_filter)
         self.retriever = vectorstore.as_retriever(
-            search_type='similarity',
+            search_type='similarity_score_threshold',
             search_kwargs={
                 "k": k,
                 "filter": _filter,
-                # "score_threshold": .1
+                "score_threshold": .7
             }
         )
 
