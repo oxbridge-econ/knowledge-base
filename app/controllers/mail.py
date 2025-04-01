@@ -78,11 +78,10 @@ def list_emails(service, messages):
         metadata = {}
         logger.info("vectorstore.index_to_docstore_id: %s", list(vectorstore.index_to_docstore_id.values()))
         logger.info("type: %s", type(vectorstore.index_to_docstore_id.values()))
-        if msg["id"] in list(vectorstore.index_to_docstore_id.values()):
-            logger.info("Email already exists in the database.")
-            existing_ids = list(vectorstore.index_to_docstore_id.values())
-            logger.info("Existing email IDs in the database: %s", existing_ids)
-            continue
+        for docstore_id in list(vectorstore.index_to_docstore_id.values()):
+            if docstore_id.startswith(message["id"]):
+                logger.info("Already indexed: %s", message["id"])
+                continue
         for header in msg["payload"]["headers"]:
             if header["name"] == "From":
                 metadata["from"] = header["value"]
