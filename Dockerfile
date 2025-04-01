@@ -10,6 +10,9 @@ WORKDIR /app
 # Create a cache directory and set permissions
 RUN mkdir -p /app/cache && chmod -R 777 /app/cache
 
+RUN apt-get update
+RUN apt-get install libgl1-mesa-glx
+
 # Install requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 RUN python3 -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', download_dir='/usr/local/nltk_data')"

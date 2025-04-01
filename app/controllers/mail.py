@@ -77,6 +77,7 @@ def list_emails(service, messages):
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
         logger.info("vectorstore.index_to_docstore_id: %s", vectorstore.index_to_docstore_id)
+        logger.info("type: %s", type(vectorstore.index_to_docstore_id))
         if msg["id"] in vectorstore.index_to_docstore_id:
             logger.info("Email already exists in the database.")
             continue
