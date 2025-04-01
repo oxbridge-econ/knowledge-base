@@ -166,7 +166,7 @@ def list_emails(service, messages):
                                     },
                                 )
                             )
-                            ids.append(f"{metadata["msg_id"]}_{part["filename"]}")
+                            ids.append(f"{metadata['msg_id']}_{part['filename']}")
                     if os.path.exists(path):
                         os.remove(path)
                     for index, document in enumerate(attach_docs or []):
@@ -181,7 +181,7 @@ def list_emails(service, messages):
                         }
                         document.metadata.update(metadata)
                         documents.append(document)
-                        ids.append(f"{metadata["msg_id"]}_{part["filename"]}_{index}")
+                        ids.append(f"{metadata['msg_id']}_{part['filename']}_{index}")
         elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             body = re.sub(r"<[^>]+>", "", body)
