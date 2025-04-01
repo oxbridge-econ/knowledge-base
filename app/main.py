@@ -60,7 +60,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
-logging.getLogger().setLevel(logging.ERROR)
+logging.getLogger().setLevel(logging.INFO)
 
 app = FastAPI(docs_url="/")
 

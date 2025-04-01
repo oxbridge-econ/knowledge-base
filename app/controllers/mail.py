@@ -68,9 +68,9 @@ def list_emails(service, messages):
         - Deletes temporary files created during attachment processing.
 
     Notes:
-        - The function assumes the existence of a global `service` object for Gmail API interactions.
+        - The function assumes the existence of a global `service` object for Gmail API.
         - The `vectorstore.add_documents` method is used to store the processed documents.
-        - Attachments are temporarily saved in a directory specified by `ATTACHMENTS_DIR` and deleted after processing.
+        - Attachments are temporarily saved in `ATTACHMENTS_DIR` and deleted after processing.
         - The function logs information about attachments being downloaded.
     """
     ids = []
@@ -78,6 +78,9 @@ def list_emails(service, messages):
     for message in messages:
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
+        if vectorstore.docstore.contains(msg["id"]):
+            logger.info("Email already exists in the database.")
+            continue
         for header in msg["payload"]["headers"]:
             if header["name"] == "From":
                 metadata["from"] = header["value"]
@@ -85,7 +88,7 @@ def list_emails(service, messages):
                 metadata["to"] = header["value"]
             elif header["name"] == "Subject":
                 metadata["subject"] = header["value"]
-                print(f"subject: {metadata['subject']}")
+                logger.info("subject: %s", metadata["subject"])
             elif header["name"] == "Cc":
                 metadata["cc"] = header["value"]
         metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000).strftime(
@@ -150,7 +153,7 @@ def list_emails(service, messages):
                         for event in calendar.events:
                             documents.append(
                                 Document(
-                                    page_content=f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
+                                    page_content=f"Event: {event.name}\n\Description: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
                                     metadata={
                                         "attachment": part["filename"],
                                         "mimeType": part["mimeType"],
