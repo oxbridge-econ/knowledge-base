@@ -76,11 +76,10 @@ def list_emails(service, messages):
     for message in messages:
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
-        logger.info("vectorstore.index_to_docstore_id: %s", list(vectorstore.index_to_docstore_id.values()))
-        logger.info("type: %s", type(vectorstore.index_to_docstore_id.values()))
+        metadata["msg_id"] = f"{msg['threadId']}-{msg['id']}"
         for docstore_id in list(vectorstore.index_to_docstore_id.values()):
-            if docstore_id.startswith(message["id"]):
-                logger.info("Already indexed: %s", message["id"])
+            if docstore_id.startswith(metadata["msg_id"]):
+                logger.info("Already indexed: %s", metadata["msg_id"])
                 continue
         for header in msg["payload"]["headers"]:
             if header["name"] == "From":
@@ -96,7 +95,6 @@ def list_emails(service, messages):
             "%d/%m/%Y %H:%M:%S"
         )
         metadata["user_id"] = service.users().getProfile(userId="me").execute().get("emailAddress")
-        metadata["msg_id"] = msg["id"]
         # print(metadata, msg["payload"]["mimeType"])
         ids = []
         documents = []
@@ -168,7 +166,7 @@ def list_emails(service, messages):
                                     },
                                 )
                             )
-                            ids.append(f"{msg['id']}_{attachment_id}")
+                            ids.append(f"{metadata["msg_id"]}_{part["filename"]}")
                     if os.path.exists(path):
                         os.remove(path)
                     for index, document in enumerate(attach_docs or []):
@@ -183,19 +181,19 @@ def list_emails(service, messages):
                         }
                         document.metadata.update(metadata)
                         documents.append(document)
-                        ids.append(f"{msg['id']}_{attachment_id}_{index}")
+                        ids.append(f"{metadata["msg_id"]}_{part["filename"]}_{index}")
         elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             body = re.sub(r"<[^>]+>", "", body)
             metadata["mimeType"] = msg["payload"]["mimeType"]
             documents.append(Document(page_content=body, metadata=metadata))
-            ids.append(msg["id"])
+            ids.append(metadata["msg_id"])
         elif msg["payload"]["mimeType"] == "text/html" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             body = re.sub(r"<[^>]+>", "", body)
             metadata["mimeType"] = msg["payload"]["mimeType"]
             documents.append(Document(page_content=body, metadata=metadata))
-            ids.append(msg["id"])
+            ids.append(metadata["msg_id"])
         if "multipart/alternative" in mime_types and len(mime_types) == 1:
             print("Only multipart/alternative found in the email.")
         else:
