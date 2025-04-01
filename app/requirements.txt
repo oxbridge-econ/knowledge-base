@@ -111,6 +111,7 @@ overrides==7.7.0
 packaging==24.2
 pandas==2.2.3
 pdfminer.six==20250327
+pi_heif==0.22.0
 pillow==11.1.0
 posthog==3.18.1
 propcache==0.3.1
