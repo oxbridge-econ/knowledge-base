@@ -76,10 +76,12 @@ def list_emails(service, messages):
     for message in messages:
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
-        logger.info("vectorstore.index_to_docstore_id: %s", vectorstore.index_to_docstore_id)
-        logger.info("type: %s", type(vectorstore.index_to_docstore_id))
-        if msg["id"] in vectorstore.index_to_docstore_id:
+        logger.info("vectorstore.index_to_docstore_id: %s", vectorstore.index_to_docstore_id.values())
+        logger.info("type: %s", type(vectorstore.index_to_docstore_id.values()))
+        if msg["id"] in list(vectorstore.index_to_docstore_id.values()):
             logger.info("Email already exists in the database.")
+            existing_ids = list(vectorstore.index_to_docstore_id.values())
+            logger.info("Existing email IDs in the database: %s", existing_ids)
             continue
         for header in msg["payload"]["headers"]:
             if header["name"] == "From":
