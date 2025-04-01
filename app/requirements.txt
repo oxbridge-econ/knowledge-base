@@ -110,6 +110,7 @@ orjson==3.10.15
 overrides==7.7.0
 packaging==24.2
 pandas==2.2.3
+pdfminer.six==20250327
 pillow==11.1.0
 posthog==3.18.1
 propcache==0.3.1
