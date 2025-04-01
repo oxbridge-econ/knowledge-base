@@ -2,6 +2,7 @@
 import os
 import re
 import base64
+import hashlib
 from datetime import datetime, timedelta
 from venv import logger
 from ics import Calendar
@@ -166,7 +167,7 @@ def list_emails(service, messages):
                                     },
                                 )
                             )
-                            ids.append(f"{metadata['msg_id']}_{part['filename']}")
+                            ids.append(f"{metadata['msg_id']}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}")
                     if os.path.exists(path):
                         os.remove(path)
                     for index, document in enumerate(attach_docs or []):
@@ -181,7 +182,7 @@ def list_emails(service, messages):
                         }
                         document.metadata.update(metadata)
                         documents.append(document)
-                        ids.append(f"{metadata['msg_id']}_{part['filename']}_{index}")
+                        ids.append(f"{metadata['msg_id']}-{hashlib.sha256(file_data).hexdigest()}-{index}")
         elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             body = re.sub(r"<[^>]+>", "", body)
@@ -197,7 +198,10 @@ def list_emails(service, messages):
         if "multipart/alternative" in mime_types and len(mime_types) == 1:
             print("Only multipart/alternative found in the email.")
         else:
-            vectorstore.add_documents(documents=documents, ids=ids)
+            try:
+                vectorstore.add_documents(documents=documents, ids=ids)
+            except Exception as e:
+                logger.error("Error adding documents to vectorstore: %s", e)
 
 
 def collect(service, query=(datetime.today() - timedelta(days=10)).strftime("after:%Y/%m/%d")):
