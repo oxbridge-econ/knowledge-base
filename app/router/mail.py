@@ -1,6 +1,8 @@
 """Module for defining the main routes of the API."""
 import os
 import pickle
+import threading
+from venv import logger
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -38,9 +40,10 @@ def collect(query: MailReqData, request: Request):
                 scopes=cred_dict["scopes"],
             )
         mailservice = build("gmail", "v1", credentials=credentials)
-        mail.collect(mailservice, query.query)
-        return JSONResponse(content={"message": "Mail collected successfully."})
+        threading.Thread(target=mail.collect, args=(mailservice, query.query)).start()
+        return JSONResponse(content={"message": "Mail collection in progress."})
     except Exception as e:
+        logger.error("Error collecting mail: %s", e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 # @router.get("")

@@ -28,7 +28,7 @@ class MailReqData(BaseModel):
         query (str): The query or message content sent by the user.
     """
     email: str
-    query: str
+    query: Optional[str] = ""
 
 class ReqFollowUp(BaseModel):
     """
