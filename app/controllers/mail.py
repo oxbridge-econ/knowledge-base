@@ -85,7 +85,7 @@ def list_emails(service, messages):
                 metadata["to"] = header["value"]
             elif header["name"] == "Subject":
                 metadata["subject"] = header["value"]
-                print(f"subject: {metadata["subject"]}")
+                print(f"subject: {metadata['subject']}")
             elif header["name"] == "Cc":
                 metadata["cc"] = header["value"]
         metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000).strftime(
