@@ -139,7 +139,10 @@ def list_emails(service, messages):
                     if part["mimeType"] == "application/pdf":
                         attach_docs = PyPDFLoader(path).load()
                     elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
-                        attach_docs = UnstructuredImageLoader(path).load()
+                        try:
+                            attach_docs = UnstructuredImageLoader(path).load()
+                        except Exception as e:
+                            logger.error("Error loading image: %s", e)
                     elif part["filename"].endswith(".csv"):
                         attach_docs = CSVLoader(path).load()
                     elif (
