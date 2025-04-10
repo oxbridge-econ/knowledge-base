@@ -77,11 +77,13 @@ def list_emails(service, messages):
     for message in messages:
         msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
         metadata = {}
-        metadata["msg_id"] = f"{msg['threadId']}-{msg['id']}"
-        for docstore_id in list(vectorstore.index_to_docstore_id.values()):
-            if docstore_id.startswith(metadata["msg_id"]):
-                logger.info("Already indexed: %s", metadata["msg_id"])
-                continue
+        metadata["threadId"] = msg["threadId"]
+        metadata["msgId"] = msg["id"]
+        msgId = f"{msg['threadId']}-{msg['id']}"
+        # for docstore_id in list(vectorstore.index_to_docstore_id.values()):
+        #     if docstore_id.startswith(msgId):
+        #         logger.info("Already indexed: %s", msgId)
+        #         continue
         for header in msg["payload"]["headers"]:
             if header["name"] == "From":
                 metadata["from"] = header["value"]
@@ -95,7 +97,7 @@ def list_emails(service, messages):
         metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000).strftime(
             "%d/%m/%Y %H:%M:%S"
         )
-        metadata["user_id"] = service.users().getProfile(userId="me").execute().get("emailAddress")
+        metadata["userId"] = service.users().getProfile(userId="me").execute().get("emailAddress")
         # print(metadata, msg["payload"]["mimeType"])
         ids = []
         documents = []
@@ -170,7 +172,7 @@ def list_emails(service, messages):
                                     },
                                 )
                             )
-                            ids.append(f"{metadata['msg_id']}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}")
+                            ids.append(f"{msgId}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}")
                     if os.path.exists(path):
                         os.remove(path)
                     for index, document in enumerate(attach_docs or []):
@@ -185,19 +187,19 @@ def list_emails(service, messages):
                         }
                         document.metadata.update(metadata)
                         documents.append(document)
-                        ids.append(f"{metadata['msg_id']}-{hashlib.sha256(file_data).hexdigest()}-{index}")
+                        ids.append(f"{msgId}-{hashlib.sha256(file_data).hexdigest()}-{index}")
         elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             body = re.sub(r"<[^>]+>", "", body)
             metadata["mimeType"] = msg["payload"]["mimeType"]
             documents.append(Document(page_content=body, metadata=metadata))
-            ids.append(metadata["msg_id"])
+            ids.append(msgId)
         elif msg["payload"]["mimeType"] == "text/html" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             body = re.sub(r"<[^>]+>", "", body)
             metadata["mimeType"] = msg["payload"]["mimeType"]
             documents.append(Document(page_content=body, metadata=metadata))
-            ids.append(metadata["msg_id"])
+            ids.append(msgId)
         if "multipart/alternative" in mime_types and len(mime_types) == 1:
             print("Only multipart/alternative found in the email.")
         else:
