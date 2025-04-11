@@ -84,6 +84,7 @@ langchain-text-splitters==0.3.7
 langdetect==1.0.9
 langsmith==0.3.11
 lxml==5.3.1
+lz4==4.4.4
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
 marshmallow==3.26.1
@@ -131,6 +132,7 @@ posthog==3.18.1
 propcache==0.3.1
 proto-plus==1.26.0
 protobuf==5.29.3
+protoc-gen-openapiv2==0.0.1
 psutil==7.0.0
 pyarrow==19.0.1
 pyasn1==0.4.8
