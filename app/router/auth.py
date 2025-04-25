@@ -1,8 +1,8 @@
 """Module for defining the main routes of the API."""
 import os
 import json
-import logging
 import pickle
+from cv2 import log
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -45,7 +45,7 @@ async def get_auth_url():
     return JSONResponse({"url": auth_url})
 
 @router.get("/auth/google/callback")
-async def google_callback(code: str, request: Request):
+async def google_callback(state: str, code: str, scope: str, request: Request):
     """
     Handles the Google OAuth2 callback by exchanging the authorization code for credentials,
     retrieving the user's Gmail profile, and saving the credentials to a file.
@@ -67,7 +67,9 @@ async def google_callback(code: str, request: Request):
         - json: Used to serialize and deserialize credentials.
         - pickle: Used to save credentials to a file.
     """
-    logging.info("code: %s", code)
+    print("state: ", state)
+    print("code: ", code)
+    print("scope: ", scope)
     flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
     flow.redirect_uri = REDIRECT_URI
     flow.fetch_token(code=code)
