@@ -45,10 +45,10 @@ async def get_auth_url():
     return JSONResponse({"url": auth_url})
 
 @router.get("/auth/google/callback")
-async def google_callback(code: str, state: str = None, scope: str = None, request: Request = None):
+async def google_callback(state: str = None, code: str = None, scope: str = None, request: Request = None):
     try:
         # Validate state (optional, for CSRF protection)
-        if state and request.state.session.get("oauth_state") != state:
+        if state:
             raise HTTPException(status_code=400, detail="Invalid state parameter")
 
         flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
