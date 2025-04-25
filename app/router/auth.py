@@ -2,10 +2,11 @@
 import os
 import json
 import pickle
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from oauthlib.oauth2.rfc6749.errors import InvalidGrantError
 
 router = APIRouter(tags=["auth"])
 
@@ -44,52 +45,79 @@ async def get_auth_url():
     return JSONResponse({"url": auth_url})
 
 @router.get("/auth/google/callback")
-async def google_callback(code: str, request: Request):
-    """
-    Handles the Google OAuth2 callback by exchanging the authorization code for credentials,
-    retrieving the user's Gmail profile, and saving the credentials to a file.
+async def google_callback(code: str, state: str = None, scope: str = None, request: Request = None):
+    try:
+        # Validate state (optional, for CSRF protection)
+        if state and request.state.session.get("oauth_state") != state:
+            raise HTTPException(status_code=400, detail="Invalid state parameter")
 
-    Args:
-        code (str): The authorization code returned by Google's OAuth2 server.
-        request (Request): The incoming HTTP request object.
+        flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
+        flow.redirect_uri = REDIRECT_URI
+        flow.fetch_token(code=code)
+        credentials = flow.credentials
+        request.state.session["credential"] = json.loads(credentials.to_json())
 
-    Returns:
-        JSONResponse: A JSON response containing the user's Gmail profile information.
+        service = build("gmail", "v1", credentials=credentials)
+        profile = service.users().getProfile(userId="me").execute()
 
-    Side Effects:
-        - Saves the user's credentials to a pickle file named after their email address.
-        - Stores the credentials in the session state of the request.
+        # Ensure cache directory exists
+        os.makedirs("cache", exist_ok=True)
+        with open(f"cache/{profile['emailAddress']}.pickle", "wb") as token:
+            pickle.dump(credentials, token)
 
-    Dependencies:
-        - google_auth_oauthlib.flow.InstalledAppFlow: Used to handle the OAuth2 flow.
-        - googleapiclient.discovery.build: Used to build the Gmail API service.
-        - json: Used to serialize and deserialize credentials.
-        - pickle: Used to save credentials to a file.
-    """
-    flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
-    flow.redirect_uri = REDIRECT_URI
-    flow.fetch_token(code=code)
-    credentials = flow.credentials
-    request.state.session["credential"] = json.loads(credentials.to_json())
-    # cred_dict = (request.state.session.get("credential"))
-    # cred = Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri=cred_dict["token_uri"],
-    #     client_id=cred_dict["client_id"],
-    #     client_secret=cred_dict["client_secret"],
-    #     scopes=cred_dict["scopes"],
-    # )
-    # service = build("gmail", "v1", credentials=Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri=cred_dict["token_uri"],
-    #     client_id=cred_dict["client_id"],
-    #     client_secret=cred_dict["client_secret"],
-    #     scopes=cred_dict["scopes"],
-    # ))
-    service = build("gmail", "v1", credentials=credentials)
-    profile = service.users().getProfile(userId="me").execute()
-    with open(f"cache/{profile['emailAddress']}.pickle", "wb") as token:
-        pickle.dump(credentials, token)
-    return JSONResponse(profile)
+        return JSONResponse(profile)
+    except InvalidGrantError:
+        raise HTTPException(status_code=400, detail="Invalid or expired authorization code")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Authentication failed: {str(e)}")
+    
+# @router.get("/auth/google/callback")
+# async def google_callback(code: str, request: Request):
+#     """
+#     Handles the Google OAuth2 callback by exchanging the authorization code for credentials,
+#     retrieving the user's Gmail profile, and saving the credentials to a file.
+
+#     Args:
+#         code (str): The authorization code returned by Google's OAuth2 server.
+#         request (Request): The incoming HTTP request object.
+
+#     Returns:
+#         JSONResponse: A JSON response containing the user's Gmail profile information.
+
+#     Side Effects:
+#         - Saves the user's credentials to a pickle file named after their email address.
+#         - Stores the credentials in the session state of the request.
+
+#     Dependencies:
+#         - google_auth_oauthlib.flow.InstalledAppFlow: Used to handle the OAuth2 flow.
+#         - googleapiclient.discovery.build: Used to build the Gmail API service.
+#         - json: Used to serialize and deserialize credentials.
+#         - pickle: Used to save credentials to a file.
+#     """
+#     flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
+#     flow.redirect_uri = REDIRECT_URI
+#     flow.fetch_token(code=code)
+#     credentials = flow.credentials
+#     request.state.session["credential"] = json.loads(credentials.to_json())
+#     # cred_dict = (request.state.session.get("credential"))
+#     # cred = Credentials(
+#     #     token=cred_dict["token"],
+#     #     refresh_token=cred_dict["refresh_token"],
+#     #     token_uri=cred_dict["token_uri"],
+#     #     client_id=cred_dict["client_id"],
+#     #     client_secret=cred_dict["client_secret"],
+#     #     scopes=cred_dict["scopes"],
+#     # )
+#     # service = build("gmail", "v1", credentials=Credentials(
+#     #     token=cred_dict["token"],
+#     #     refresh_token=cred_dict["refresh_token"],
+#     #     token_uri=cred_dict["token_uri"],
+#     #     client_id=cred_dict["client_id"],
+#     #     client_secret=cred_dict["client_secret"],
+#     #     scopes=cred_dict["scopes"],
+#     # ))
+#     service = build("gmail", "v1", credentials=credentials)
+#     profile = service.users().getProfile(userId="me").execute()
+#     with open(f"cache/{profile['emailAddress']}.pickle", "wb") as token:
+#         pickle.dump(credentials, token)
+#     return JSONResponse(profile)
