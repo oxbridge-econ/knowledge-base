@@ -2,10 +2,10 @@
 import os
 import json
 import pickle
-from cv2 import log
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 router = APIRouter(tags=["auth"])
@@ -74,25 +74,19 @@ async def google_callback(state: str, code: str, scope: str, request: Request):
     flow.redirect_uri = REDIRECT_URI
     flow.fetch_token(code=code)
     credentials = flow.credentials
+    print(credentials.to_json())
     request.state.session["credential"] = json.loads(credentials.to_json())
-    # cred_dict = (request.state.session.get("credential"))
-    # cred = Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri=cred_dict["token_uri"],
-    #     client_id=cred_dict["client_id"],
-    #     client_secret=cred_dict["client_secret"],
-    #     scopes=cred_dict["scopes"],
-    # )
-    # service = build("gmail", "v1", credentials=Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri=cred_dict["token_uri"],
-    #     client_id=cred_dict["client_id"],
-    #     client_secret=cred_dict["client_secret"],
-    #     scopes=cred_dict["scopes"],
-    # ))
-    service = build("gmail", "v1", credentials=credentials)
+    cred_dict = (request.state.session.get("credential"))
+    service = build("gmail", "v1", credentials=Credentials(
+        token=cred_dict["token"],
+        # refresh_token=cred_dict["refresh_token"],
+        # token_uri=cred_dict["token_uri"],
+        # client_id=cred_dict["client_id"],
+        # client_secret=cred_dict["client_secret"],
+        # scopes=cred_dict["scopes"],
+    ))
+    print(service)
+    # service = build("gmail", "v1", credentials=credentials)
     profile = service.users().getProfile(userId="me").execute()
     with open(f"cache/{profile['emailAddress']}.pickle", "wb") as token:
         pickle.dump(credentials, token)

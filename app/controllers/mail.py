@@ -1,20 +1,19 @@
 """Module to search and list emails from Gmail."""
-import os
-import re
 import base64
 import hashlib
+import os
+import re
 from datetime import datetime, timedelta
 from venv import logger
-from ics import Calendar
 
-from langchain_core.documents import Document
+from ics import Calendar
 from langchain_community.document_loaders import (
+    CSVLoader,
     PyPDFLoader,
     UnstructuredExcelLoader,
-    CSVLoader,
     UnstructuredImageLoader,
 )
-
+from langchain_core.documents import Document
 from models.db import vectorstore
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -230,3 +229,71 @@ def collect(service, query=(datetime.today() - timedelta(days=10)).strftime("aft
         return f"{len(emails)} emails added to the collection."
     else:
         logger.info("No emails found after two weeks ago.")
+
+
+def get_emails(service, query=(datetime.today() - timedelta(days=10)).strftime("after:%Y/%m/%d"), max_results=10):
+    """
+    Retrieve a list of emails with subject, to, from, cc, and content.
+    
+    Args:
+        mailservice: Authenticated Gmail API service instance
+        max_results: Maximum number of emails to retrieve
+    
+    Returns:
+        List of dictionaries containing email details
+    """
+    try:
+        # List messages
+        response = service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
+        messages = response.get('messages', [])
+        email_list = []
+
+        if not messages:
+            return email_list
+
+        for message in messages:
+            # Get detailed message data
+            msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
+            headers = msg['payload']['headers']
+
+            # Initialize email details
+            email_data = {
+                'subject': '',
+                'from': '',
+                'to': '',
+                'cc': '',
+                'content': '',
+                'snippet': msg['snippet'] if 'snippet' in msg else '',
+            }
+
+            # Extract headers
+            for header in headers:
+                name = header['name'].lower()
+                if name == 'subject':
+                    email_data['subject'] = header['value']
+                elif name == 'from':
+                    email_data['from'] = header['value']
+                elif name == 'to':
+                    email_data['to'] = header['value']
+                elif name == 'cc':
+                    email_data['cc'] = header['value']
+
+            # Extract content
+            if 'parts' in msg['payload']:
+                for part in msg['payload']['parts']:
+                    if part['mimeType'] == 'text/plain':
+                        email_data['content'] = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                        break
+                    elif part['mimeType'] == 'text/html':
+                        email_data['content'] = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                        break
+            elif 'data' in msg['payload']['body']:
+                email_data['content'] = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
+
+            email_list.append(email_data)
+
+        return email_list
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []

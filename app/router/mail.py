@@ -46,16 +46,32 @@ def collect(query: MailReqData, request: Request):
         logger.error("Error collecting mail: %s", e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# @router.get("")
-# def get():
-#     """
-#     Handles the chat POST request.
+@router.get("")
+def get(query: MailReqData, request: Request):
+    """
+    Handles the chat POST request.
 
-#     Args:
-#         query (ReqData): The request data containing the query parameters.
+    Args:
+        query (ReqData): The request data containing the query parameters.
 
-#     Returns:
-#         str: The generated response from the chat function.
-#     """
-#     # result = mail.get()
-#     return JSONResponse(content= result)
+    Returns:
+        str: The generated response from the chat function.
+    """
+    if os.path.exists(f"cache/{query.email}.pickle"):
+            with open(f"cache/{query.email}.pickle", "rb") as token:
+                credentials = pickle.load(token)
+    else:
+        cred_dict = request.state.session.get("credential")
+        credentials = Credentials(
+            token=cred_dict["token"],
+            refresh_token=cred_dict["refresh_token"],
+            token_uri=cred_dict["token_uri"],
+            client_id=cred_dict["client_id"],
+            client_secret=cred_dict["client_secret"],
+            scopes=cred_dict["scopes"],
+        )
+    mailservice = build("gmail", "v1", credentials=credentials)
+    print("query: ", query.query)
+    result = mail.get_emails(mailservice, query.query)
+    print(result)
+    return JSONResponse(content= result)
