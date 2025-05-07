@@ -71,7 +71,5 @@ def get(query: MailReqData, request: Request):
             scopes=cred_dict["scopes"],
         )
     mailservice = build("gmail", "v1", credentials=credentials)
-    print("query: ", query.query)
     result = mail.get_emails(mailservice, query.query)
-    print(result)
     return JSONResponse(content= result)
