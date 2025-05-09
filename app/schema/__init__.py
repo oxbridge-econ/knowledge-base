@@ -2,6 +2,25 @@
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
+class EmailQuery(BaseModel):
+    """
+    EmailQuery model representing the structure of an email query.
+
+    Attributes:
+        subject (Optional[str]): The subject of the email to search for.
+        from_email (Optional[str]): The sender's email address.
+        to_email (Optional[str]): The recipient's email address.
+        cc_email (Optional[str]): The CC email address.
+        after (Optional[str]): The date after which to search for emails.
+        max_results (Optional[int]): The maximum number of results to return.
+    """
+    subject: Optional[str]
+    from_email: Optional[str] = Field(None, alias="from")
+    to_email: Optional[str] = Field(None, alias="to")
+    cc_email: Optional[str] = Field(None, alias="cc")
+    after: Optional[str]
+    max_results: Optional[int] = 10
+
 class ReqData(BaseModel):
     """
     RequestData is a Pydantic model that represents the data structure for a request.
@@ -28,7 +47,7 @@ class MailReqData(BaseModel):
         query (str): The query or message content sent by the user.
     """
     email: str
-    query: Optional[str] = ""
+    query: EmailQuery
 
 class ReqFollowUp(BaseModel):
     """

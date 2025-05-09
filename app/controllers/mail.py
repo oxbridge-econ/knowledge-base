@@ -22,7 +22,40 @@ EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 ATTACHMENTS_DIR = "cache"
 os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 
-# service = build_gmail_service()
+def build_query(params):
+    """
+    Constructs a query string based on the provided parameters.
+
+    Args:
+        params (dict): A dictionary containing optional query parameters. 
+            Supported keys include:
+                - 'subject' (str): The subject of the email.
+                - 'from' (str): The sender's email address.
+                - 'to' (str): The recipient's email address.
+                - 'cc' (str): The CC recipient's email address.
+                - 'after' (str): A date string to filter emails sent after this date.
+                - 'before' (str): A date string to filter emails sent before this date.
+
+    Returns:
+        str: A query string constructed from the provided parameters. Each parameter
+        is formatted as a key-value pair and joined by spaces. If a parameter is not
+        provided or is empty, it is excluded from the query string.
+    """
+    query_parts = []
+    if 'subject' in params and params['subject']:
+        query_parts.append(f'subject:"{params["subject"]}"')
+    if 'from' in params and params['from']:
+        query_parts.append(f'from:{params["from"]}')
+    if 'to' in params and params['to']:
+        query_parts.append(f'to:{params["to"]}')
+    if 'cc' in params and params['cc']:
+        query_parts.append(f'cc:{params["cc"]}')
+    if 'after' in params and params['after']:
+        query_parts.append(f'after:{params["after"]}')
+    if 'before' in params and params['before']:
+        query_parts.append(f'before:{params["before"]}')
+    return ' '.join(query_parts)
+
 def search_emails(service, query):
     """Search emails based on a query."""
     result = service.users().messages().list(userId="me", q=query).execute()
@@ -79,10 +112,6 @@ def list_emails(service, messages):
         metadata["threadId"] = msg["threadId"]
         metadata["msgId"] = msg["id"]
         msgId = f"{msg['threadId']}-{msg['id']}"
-        # for docstore_id in list(vectorstore.index_to_docstore_id.values()):
-        #     if docstore_id.startswith(msgId):
-        #         logger.info("Already indexed: %s", msgId)
-        #         continue
         for header in msg["payload"]["headers"]:
             if header["name"] == "From":
                 metadata["from"] = header["value"]
@@ -97,7 +126,6 @@ def list_emails(service, messages):
             "%d/%m/%Y %H:%M:%S"
         )
         metadata["userId"] = service.users().getProfile(userId="me").execute().get("emailAddress")
-        # print(metadata, msg["payload"]["mimeType"])
         ids = []
         documents = []
         mime_types = []
@@ -231,7 +259,7 @@ def collect(service, query=(datetime.today() - timedelta(days=10)).strftime("aft
         logger.info("No emails found after two weeks ago.")
 
 
-def get_emails(service, query=(datetime.today() - timedelta(days=10)).strftime("after:%Y/%m/%d"), max_results=10):
+def get_emails(service, query, max_results=10):
     """
     Retrieve a list of emails with subject, to, from, cc, and content.
     
@@ -244,19 +272,16 @@ def get_emails(service, query=(datetime.today() - timedelta(days=10)).strftime("
     """
     try:
         # List messages
-        response = service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
+        query = build_query(query.dict())
+        response = service.users().messages().list(
+            userId='me', q=query, maxResults=max_results).execute()
         messages = response.get('messages', [])
         email_list = []
-
         if not messages:
             return email_list
-
         for message in messages:
-            # Get detailed message data
             msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
             headers = msg['payload']['headers']
-
-            # Initialize email details
             email_data = {
                 'subject': '',
                 'from': '',
@@ -265,8 +290,6 @@ def get_emails(service, query=(datetime.today() - timedelta(days=10)).strftime("
                 'content': '',
                 'snippet': msg['snippet'] if 'snippet' in msg else '',
             }
-
-            # Extract headers
             for header in headers:
                 name = header['name'].lower()
                 if name == 'subject':
@@ -277,8 +300,6 @@ def get_emails(service, query=(datetime.today() - timedelta(days=10)).strftime("
                     email_data['to'] = header['value']
                 elif name == 'cc':
                     email_data['cc'] = header['value']
-
-            # Extract content
             if 'parts' in msg['payload']:
                 for part in msg['payload']['parts']:
                     if part['mimeType'] == 'text/plain':
@@ -289,9 +310,7 @@ def get_emails(service, query=(datetime.today() - timedelta(days=10)).strftime("
                         break
             elif 'data' in msg['payload']['body']:
                 email_data['content'] = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
-
             email_list.append(email_data)
-
         return email_list
 
     except Exception as e:
