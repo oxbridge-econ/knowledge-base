@@ -1,6 +1,9 @@
 """Module containing the data models for the application."""
-from typing import Optional, List
+from datetime import datetime, timedelta
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
+
 
 class EmailQuery(BaseModel):
     """
@@ -11,14 +14,52 @@ class EmailQuery(BaseModel):
         from_email (Optional[str]): The sender's email address.
         to_email (Optional[str]): The recipient's email address.
         cc_email (Optional[str]): The CC email address.
+        has_words (Optional[str]): Words that the email must contain.
+        not_has_words (Optional[str]): Words that the email must not contain.
+        size (Optional[int]): The size of the email in bytes.
+        date_within (Optional[str]): The date within which to search for emails.
         after (Optional[str]): The date after which to search for emails.
         max_results (Optional[int]): The maximum number of results to return.
     """
-    subject: Optional[str]
+    subject: Optional[str] = None
     from_email: Optional[str] = Field(None, alias="from")
     to_email: Optional[str] = Field(None, alias="to")
     cc_email: Optional[str] = Field(None, alias="cc")
-    after: Optional[str]
+    has_words: Optional[str] = None
+    not_has_words: Optional[str] = None
+    size: Optional[int] = None
+    before: Optional[str] = None
+    after: Optional[str] = None
+
+    @classmethod
+    def validate_before_after(
+        cls, before: Optional[str], after: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+        """
+        Validates and adjusts the 'before' and 'after' date parameters.
+
+        This method ensures that the 'before' date is greater than the 'after' date.
+        If 'before' is not provided, it defaults to six months prior to the current date.
+
+        Args:
+            before (Optional[str]): The 'before' date in the format "YYYY/MM/DD". Defaults to None.
+            after (Optional[str]): The 'after' date in the format "YYYY/MM/DD". Defaults to None.
+
+        Returns:
+            tuple[Optional[str], Optional[str]]: 
+            A tuple containing the validated 'before' and 'after' dates.
+
+        Raises:
+            ValueError: If the 'before' date is not greater than the 'after' date.
+        """
+        if after is None:
+            after = (datetime.now() - timedelta(days=6 * 30)).strftime("%Y/%m/%d")
+        if before and before >= after:
+            raise ValueError("The 'before' date must be greater than the 'after' date.")
+        return before, after
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.before, self.after = self.validate_before_after(self.before, self.after)
     max_results: Optional[int] = 10
 
 class ReqData(BaseModel):
@@ -43,10 +84,8 @@ class MailReqData(BaseModel):
     MailReqData is a data model representing the structure of a mail request.
 
     Attributes:
-        email (str): The email address of the sender.
         query (str): The query or message content sent by the user.
     """
-    email: str
     query: EmailQuery
 
 class ReqFollowUp(BaseModel):

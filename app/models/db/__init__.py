@@ -1,12 +1,14 @@
 """This module is responsible for initializing the database connection and creating the necessary tables."""
 from pinecone import Pinecone, ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
-from models.llm import EmbeddingsModel
+# from torch import embedding
+from models.llm import GPTEmbeddings
 
-embeddings = EmbeddingsModel("all-MiniLM-L6-v2")
+# embeddings = EmbeddingsModel("all-MiniLM-L6-v2")
+embeddings = GPTEmbeddings()
 
 pc = Pinecone()
-INDEX_NAME = "mails"
+INDEX_NAME = "gmails"
 if not pc.has_index(INDEX_NAME):
     pc.create_index(
         name=INDEX_NAME,
@@ -15,7 +17,7 @@ if not pc.has_index(INDEX_NAME):
         spec=ServerlessSpec(
             cloud="aws",
             region="us-east-1"
-        ) 
+        )
     )
 index = pc.Index(INDEX_NAME)
 vectorstore = PineconeVectorStore(index=index, embedding=embeddings)

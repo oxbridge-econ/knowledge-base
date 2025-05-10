@@ -183,3 +183,4 @@ models/chroma/data/*.bin
 models/chroma/_data/chroma.sqlite3
 models/chroma/data/chroma.sqlite3
 cache
+_cache

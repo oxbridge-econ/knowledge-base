@@ -4,7 +4,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt
-from router import auth, content, mail
+from router import auth, content, service
 from starlette.middleware.base import BaseHTTPMiddleware
 
 SECRET_KEY = "your-secret-key"
@@ -65,7 +65,7 @@ logging.getLogger().setLevel(logging.INFO)
 app = FastAPI(docs_url="/")
 
 app.include_router(content.router)
-app.include_router(mail.router)
+app.include_router(service.router)
 app.include_router(auth.router)
 
 origins = [
