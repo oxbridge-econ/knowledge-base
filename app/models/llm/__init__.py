@@ -2,7 +2,9 @@
 from typing import List
 from langchain.embeddings.base import Embeddings
 from sentence_transformers import SentenceTransformer
+from openai import AzureOpenAI
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+
 
 class GPTModel(AzureChatOpenAI):
     """
@@ -74,3 +76,5 @@ class EmbeddingsModel(Embeddings):
             List[float]: The embedded representation of the query as a list of floats.
         """
         return self.model.encode([query]).tolist()[0]
+
+client = AzureOpenAI()
