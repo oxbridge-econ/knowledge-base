@@ -4,7 +4,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from controllers.loader import load_pdf
 
-router = APIRouter(prefix="/file", tags=["mail"])
+router = APIRouter(prefix="/file", tags=["file"])
 
 ALLOWED_FILE_TYPES = {
     "application/pdf": ".pdf",
