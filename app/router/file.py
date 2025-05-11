@@ -12,8 +12,8 @@ ALLOWED_FILE_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"
 }
 
-@router.get("")
-async def get(file: UploadFile = File(...)) -> JSONResponse:
+@router.post("")
+async def preview(file: UploadFile = File(...)) -> JSONResponse:
     """
     Handles the chat POST request.
 
