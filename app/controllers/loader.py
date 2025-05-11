@@ -238,8 +238,8 @@ def upload(docs):
             document.metadata["id"] = str(
                 hashlib.sha256(document.metadata['attachment'].encode()).hexdigest())
             if "page" in document.metadata:
-                ids.append(f"{document.metadata["id"]}-{document.metadata["page"]}-{index}")
+                ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
             else:
-                ids.append(f"{document.metadata["id"]}-{index}")
+                ids.append(f"{document.metadata['id']}-{index}")
             documents.append(document)
     vectorstore.add_documents(documents=documents, ids=ids)
