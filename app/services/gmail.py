@@ -18,7 +18,7 @@ from langchain_community.document_loaders import (
     UnstructuredImageLoader,
 )
 from langchain_core.documents import Document
-from models.db import vectorstore
+from models.db import vectorstore, MongodbClient
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -44,14 +44,25 @@ class GmailService():
         service:
             An authenticated Gmail API service instance used to interact with the Gmail API.
     """
-    def __init__(self, token):
+    def __init__(self, email):
         """
-        Initializes the Gmail controller with the provided token.
+        Initializes the Gmail controller with the provided email address.
 
         Args:
-            token (str): The auth token used to create credentials for accessing the Gmail API.
+            email_address (str):
+            The email address used to create credentials for accessing the Gmail API.
         """
-        self.service = build("gmail", "v1", credentials=Credentials(token=token))
+        collection = MongodbClient["user"]["FinFAST"]
+        cred_dict = collection.find_one({"_id": email})
+        credentials = Credentials(
+            token=cred_dict["token"],
+            refresh_token=cred_dict["refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=os.environ.get("CLIENT_ID"),
+            client_secret=os.environ.get("CLIENT_SECRET"),
+            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        )
+        self.service = build("gmail", "v1", credentials=credentials)
 
     def parse_query(self, params) -> str:
         """

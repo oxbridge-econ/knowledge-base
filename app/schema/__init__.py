@@ -86,6 +86,7 @@ class MailReqData(BaseModel):
     Attributes:
         query (str): The query or message content sent by the user.
     """
+    email: str
     query: EmailQuery
 
 class ReqFollowUp(BaseModel):

@@ -1,16 +1,15 @@
 """Module for defining the main routes of the API."""
 import threading
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from services import GmailService
-
-from schema import EmailQuery
+from schema import MailReqData
 
 router = APIRouter(prefix="/service", tags=["mail"])
 
 @router.post("/gmail")
-def collect(query: EmailQuery, request: Request) -> JSONResponse:
+def collect(body: MailReqData) -> JSONResponse:
     """
     Handles the chat POST request.
 
@@ -20,12 +19,12 @@ def collect(query: EmailQuery, request: Request) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    service = GmailService(request.headers.get("Google-Token"))
-    threading.Thread(target=service.collect, args=[query]).start()
+    service = GmailService(body.email)
+    threading.Thread(target=service.collect, args=[body.query]).start()
     return JSONResponse(content={"message": "Mail collection in progress."})
 
 @router.get("/gmail")
-def get(query: EmailQuery, request: Request) -> JSONResponse:
+def get(body: MailReqData) -> JSONResponse:
     """
     Handles the chat POST request.
 
@@ -35,6 +34,6 @@ def get(query: EmailQuery, request: Request) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    service = GmailService(request.headers.get("Google-Token"))
-    result = service.get(query, query.max_results)
+    service = GmailService(body.email)
+    result = service.get(body.query, body.query.max_results)
     return JSONResponse(content = result)

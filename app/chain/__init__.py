@@ -70,7 +70,7 @@ class MessageHistory(MongoDBChatMessageHistory):
 
 def get_message_history(
         session_id: str,
-        mongo_url = os.environ.get("MONGODB_URL")) -> MessageHistory:
+        mongo_url = os.environ.get("CHATHISTORY_MONGODB_URL")) -> MessageHistory:
     """
     Creates a MongoDBChatMessageHistory instance for a given session.
 
