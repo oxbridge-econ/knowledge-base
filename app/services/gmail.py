@@ -19,6 +19,7 @@ from langchain_community.document_loaders import (
 )
 from langchain_core.documents import Document
 from models.db import vectorstore, MongodbClient
+from controllers.topic import detector
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -191,7 +192,7 @@ class GmailService():
                             for event in calendar.events:
                                 documents.append(
                                     Document(
-                                        page_content=f"Event: {event.name}\n\Description: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
+                                        page_content=f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
                                         metadata={
                                             "attachment": part["filename"],
                                             "mimeType": part["mimeType"],
@@ -234,7 +235,8 @@ class GmailService():
                 metadata["mimeType"] = msg["payload"]["mimeType"]
                 documents.append(Document(page_content=body, metadata=metadata))
                 ids.append(msg_id)
-            if "multipart/alternative" in mime_types and len(mime_types) == 1:
+            related_topic = detector.invoke({"document": documents}).model_dump()['verdict']
+            if "multipart/alternative" in mime_types and len(mime_types) == 1 and not related_topic:
                 logger.info("Only multipart/alternative found in the email.")
             else:
                 try:
