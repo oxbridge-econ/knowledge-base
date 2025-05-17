@@ -1,5 +1,5 @@
 ---
-title: Mailbox
+title: Knowledge Base
 emoji: 🔥
 colorFrom: yellow
 colorTo: pink
