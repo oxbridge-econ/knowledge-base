@@ -31,6 +31,7 @@ class EmailQuery(BaseModel):
     size: Optional[int] = None
     before: Optional[str] = None
     after: Optional[str] = None
+    max_results: Optional[int] = Field(10, alias="maxResults")
 
     @classmethod
     def validate_before_after(
