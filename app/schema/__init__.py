@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+from sympy import N
 
 
 class EmailQuery(BaseModel):
@@ -87,7 +88,7 @@ class MailReqData(BaseModel):
         query (str): The query or message content sent by the user.
     """
     email: str
-    query: EmailQuery
+    query: Optional[EmailQuery] = None
 
 class ReqFollowUp(BaseModel):
     """

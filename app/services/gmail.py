@@ -8,7 +8,6 @@ import re
 from datetime import datetime
 from venv import logger
 
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from ics import Calendar
 from langchain_community.document_loaders import (
@@ -18,7 +17,7 @@ from langchain_community.document_loaders import (
     UnstructuredImageLoader,
 )
 from langchain_core.documents import Document
-from models.db import vectorstore, MongodbClient
+from models.db import vectorstore
 from controllers.topic import detector
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -45,7 +44,7 @@ class GmailService():
         service:
             An authenticated Gmail API service instance used to interact with the Gmail API.
     """
-    def __init__(self, email):
+    def __init__(self, credentials):
         """
         Initializes the Gmail controller with the provided email address.
 
@@ -53,16 +52,6 @@ class GmailService():
             email_address (str):
             The email address used to create credentials for accessing the Gmail API.
         """
-        collection = MongodbClient["user"]["FinFAST"]
-        cred_dict = collection.find_one({"_id": email})
-        credentials = Credentials(
-            token=cred_dict["token"],
-            refresh_token=cred_dict["refresh_token"],
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=os.environ.get("CLIENT_ID"),
-            client_secret=os.environ.get("CLIENT_SECRET"),
-            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-        )
         self.service = build("gmail", "v1", credentials=credentials)
 
     def parse_query(self, params) -> str:
@@ -276,7 +265,7 @@ class GmailService():
                 messages.extend(result["messages"])
         return messages
 
-    def get(self, query, max_results=10) -> list:
+    def get(self, query) -> list:
         """
         Retrieve a list of emails with subject, to, from, cc, and content.
         
@@ -288,6 +277,10 @@ class GmailService():
             List of dictionaries containing email details
         """
         try:
+            if hasattr(query, "max_results"):
+                max_results = query.max_results
+            else:
+                max_results = 10
             messages = self.search(query, max_results)
             email_list = []
             if not messages:
