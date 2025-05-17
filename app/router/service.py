@@ -37,7 +37,7 @@ def collect(body: MailReqData) -> JSONResponse:
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
                                      "error": "Invalid or expired credentials."}, status_code=401)
-    service = GmailService(body.email)
+    service = GmailService(credentials)
     if body.query is not None:
         threading.Thread(target=service.collect, args=[body.query]).start()
         return JSONResponse(content={"message": "Mail collection in progress."})
