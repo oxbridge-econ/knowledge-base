@@ -277,11 +277,7 @@ class GmailService():
             List of dictionaries containing email details
         """
         try:
-            if hasattr(query, "max_results"):
-                max_results = query.max_results
-            else:
-                max_results = 10
-            messages = self.search(query, max_results)
+            messages = self.search(query, query.max_results)
             email_list = []
             if not messages:
                 return email_list

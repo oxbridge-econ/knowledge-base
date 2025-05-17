@@ -71,5 +71,6 @@ def get(body: MailReqData) -> JSONResponse:
         return JSONResponse(content={"valid": False}, status_code=401)
     service = GmailService(credentials)
     if body.query is not None:
+        print(body.query)
         return JSONResponse(content=service.get(body.query))
     return JSONResponse(content={"valid": True})
