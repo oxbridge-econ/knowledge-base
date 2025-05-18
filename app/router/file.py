@@ -2,14 +2,16 @@
 from pathlib import Path
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
-from controllers.loader import load_pdf
+from controllers.loader import load_docx, load_pdf, load_img
 
 router = APIRouter(prefix="/file", tags=["file"])
 
 ALLOWED_FILE_TYPES = {
     "application/pdf": ".pdf",
     "text/plain": ".txt",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "image/png": ".png",
+    "image/jpeg": ".jpg"
 }
 
 @router.post("")
@@ -33,4 +35,9 @@ async def preview(file: UploadFile = File(...)) -> JSONResponse:
         )
     elif file.content_type == "application/pdf":
         result = load_pdf(content, file.filename)
+    elif file.content_type == \
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        result = load_docx(content, file.filename)
+    elif file.content_type in ["image/png", "image/jpeg"]:
+        result = load_img(content, file.filename)
     return JSONResponse(content=result)

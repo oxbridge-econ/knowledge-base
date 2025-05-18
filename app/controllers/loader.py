@@ -4,7 +4,9 @@ import hashlib
 import json
 import os
 from io import BytesIO
+import threading
 
+from PIL import Image
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_core.documents import Document
@@ -81,7 +83,7 @@ def extract_text_from_image(image):
     - Content of the page (plain text)
     """
     response = client.beta.chat.completions.parse(
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini",
         response_format = ExtractionResult,
         messages=[
             {
@@ -140,65 +142,106 @@ def load_pdf(content: bytes, filename: str):
             doc = Document(
                 page_content=text,
                 metadata={"source": filename, "page": page_num + 1})
-            documents.append(doc.model_dump())
+            documents.append(doc)
         os.remove(path)
-        return documents
+        threading.Thread(target=upload, args=[documents]).start()
+        return {
+            "success": True
+            # "documents": [doc.model_dump() for doc in documents]
+        }
     except (FileNotFoundError, ValueError, OSError) as e:
-        print(f"Error: {str(e)}")
-        return documents
+        os.remove(path)
+        return {"success": False, "error": str(e)}
 
-def load_jsonl(directory):
+def load_img(content: bytes, filename: str):
     """
-    Reads a JSONL file and converts its content into a list of Document objects.
+    Loads an image file from bytes content, extracts its contents and upload.
 
     Args:
-        path (str): Path to the JSONL file.
+        content (bytes): The binary content of the image file.
+        filename (str): The name to use when saving the file temporarily.
 
     Returns:
-        list: A list of Document objects.
-    """
-    for filename in os.listdir(directory):
-        if filename.endswith(".pdf"):
-            documents = []
-            file_path = os.path.join(directory, filename)
-            with open(file_path, "r", encoding="utf-8") as file:
-                for line in file:
-                    # Parse each line as JSON
-                    json_obj = json.loads(line.strip())
-                    metadata = {
-                        "id": json_obj.get("id", ""),
-                        "url": json_obj.get("url", ""),
-                        "title": json_obj.get("title", ""),
-                        "ts": json_obj.get("ts", "")
-                    }
-                    if json_obj.get("mine") == "text/html":
-                        text = base64.urlsafe_b64decode(json_obj.get("text", "")).decode("utf-8")
-                    else:
-                        text = json_obj.get("text", "")
-                    doc = Document(page_content=text, metadata=metadata)
-                    documents.append(doc)
-            documents = []
+        list: A list of dictionaries representing the extracted documents.
 
-def load_docx(directory):
+    Side Effects:
+        - Writes the image file to the /tmp directory.
+        - Uploads the extracted documents using the upload function.
     """
-    Loads and processes all .docx files from a specified directory.
+    try:
+        documents = []
+        text = extract_text_from_image(Image.open(BytesIO(content)))
+        doc = Document(page_content=text, metadata={"source": filename})
+        documents.append(doc)
+        threading.Thread(target=upload, args=[documents]).start()
+        return {
+            "success": True
+            # "documents": [doc.model_dump() for doc in documents]
+        }
+    except (FileNotFoundError, ValueError, OSError) as e:
+        return {"success": False, "error": str(e)}
 
-    This function iterates through the files in the given directory, identifies
-    files with a .docx extension, and uses the Docx2txtLoader to load and extract
-    their contents. The extracted contents are aggregated into a single list.
+# def load_jsonl(content: bytes, filename: str):
+#     """
+#     Reads a JSONL file and converts its content into a list of Document objects.
+
+#     Args:
+#         path (str): Path to the JSONL file.
+
+#     Returns:
+#         list: A list of Document objects.
+#     """
+#     documents = []
+#     path = os.path.join("/tmp", filename)
+#     with open(path, "wb") as f:
+#         f.write(content)
+#     with open(path, "r", encoding="utf-8") as file:
+#         for line in file:
+#             json_obj = json.loads(line.strip())
+#             metadata = {
+#                 "id": json_obj.get("id", ""),
+#                 "url": json_obj.get("url", ""),
+#                 "title": json_obj.get("title", ""),
+#                 "ts": json_obj.get("ts", "")
+#             }
+#             if json_obj.get("mine") == "text/html":
+#                 text = base64.urlsafe_b64decode(json_obj.get("text", "")).decode("utf-8")
+#             else:
+#                 text = json_obj.get("text", "")
+#             doc = Document(page_content=text, metadata=metadata)
+#             documents.append(doc)
+#         os.remove(path)
+#     documents = []
+
+def load_docx(content: bytes, filename: str):
+    """
+    Loads a DOCX file from bytes content, extracts its contents and upload.
 
     Args:
-        directory (str): The path to the directory containing .docx files.
+        content (bytes): The binary content of the DOCX file.
+        filename (str): The name to use when saving the file temporarily.
 
     Returns:
-        list: A list containing the contents of all loaded .docx files.
+        list: A list of dictionaries representing the extracted documents.
+
+    Side Effects:
+        - Writes the DOCX file to the /tmp directory.
+        - Uploads the extracted documents using the upload function.
     """
-    documents = []
-    for filename in os.listdir(directory):
-        if filename.endswith(".docx"):
-            documents.extend(Docx2txtLoader(file_path=os.path.join(directory, filename)).load())
-    upload(documents)
-    return documents
+    path = os.path.join("/tmp", filename)
+    try:
+        with open(path, "wb") as f:
+            f.write(content)
+        documents = Docx2txtLoader(file_path=path).load()
+        os.remove(path)
+        threading.Thread(target=upload, args=[documents]).start()
+        return {
+            "success": True
+            # "documents": [doc.model_dump() for doc in documents]
+        }
+    except (FileNotFoundError, ValueError, OSError) as e:
+        os.remove(path)
+        return {"success": False, "error": str(e)}
 
 def upload(docs):
     """
@@ -213,7 +256,7 @@ def upload(docs):
         - Updates the "attachment" metadata by removing the "{FOLDER}/" prefix from the "source".
         - Filters metadata to retain only "attachment" and "page" keys.
         - Generates a unique "id" for each document based on the "attachment" metadata.
-        - Constructs unique IDs for each document chunk, incorporating "id", "page", and chunk index.
+        - Constructs unique IDs for each document chunk, incorporating "id", "page", and index.
 
     Operations:
         - Splits each document into smaller chunks using `text_splitter.split_documents`.
