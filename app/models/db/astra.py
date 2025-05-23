@@ -95,7 +95,7 @@ class VectorStore(AstraDBVectorStore):
             chunks = text_splitter.split_documents(documents)
             ids = []
             for index, chunk in enumerate(chunks):
-                _id = f"{chunk.metadata["id"]}-{str(index)}"
+                _id = f"{chunk.metadata['id']}-{str(index)}"
                 ids.append(_id)
             self.add_documents_with_retry(documents, ids)
         except ValueError as e:
