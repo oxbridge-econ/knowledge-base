@@ -2,7 +2,7 @@
 from venv import logger
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores import VectorStoreRetriever
-from models.db import vectorstore
+from models.db import vectorstore, vstore
 
 class DocRetriever(BaseRetriever):
     """
@@ -28,7 +28,7 @@ class DocRetriever(BaseRetriever):
         super().__init__()
         _filter={}
         _filter.update({"user_id": req.user_id})
-        self.retriever = vectorstore.as_retriever(
+        self.retriever = vstore.as_retriever(
             search_type='similarity',
             search_kwargs={
                 "k": k,
