@@ -7,6 +7,7 @@ annotated-types==0.7.0
 anyio==4.8.0
 arrow==1.3.0
 asgiref==3.8.1
+astrapy==2.0.1
 attrs==25.3.0
 backoff==2.2.1
 bcrypt==4.3.0
@@ -25,6 +26,7 @@ cryptography==44.0.2
 cycler==0.12.1
 dataclasses-json==0.6.7
 Deprecated==1.2.18
+deprecation==2.1.0
 distro==1.9.0
 dnspython==2.7.0
 docx2txt==0.9
@@ -51,6 +53,8 @@ google-auth-oauthlib==1.2.1
 googleapis-common-protos==1.69.0
 grpcio==1.71.0
 h11==0.14.0
+h2==4.2.0
+hpack==4.1.0
 html5lib==1.1
 httpcore==1.0.7
 httplib2==0.22.0
@@ -59,6 +63,7 @@ httpx==0.28.1
 httpx-sse==0.4.0
 huggingface-hub==0.29.3
 humanfriendly==10.0
+hyperframe==6.1.0
 ics==0.7.2
 idna==3.10
 importlib_metadata==8.5.0
@@ -75,6 +80,7 @@ jsonschema-specifications==2024.10.1
 kiwisolver==1.4.8
 kubernetes==32.0.1
 langchain==0.3.21
+langchain-astradb==0.6.0
 langchain-community==0.3.20
 langchain-core==0.3.51
 langchain-mongodb==0.5.0
@@ -209,6 +215,7 @@ unstructured-inference==0.8.10
 unstructured.pytesseract==0.3.15
 uritemplate==4.1.1
 urllib3==2.3.0
+uuid6==2024.7.10
 uvicorn==0.34.0
 uvloop==0.21.0
 watchdog==6.0.0

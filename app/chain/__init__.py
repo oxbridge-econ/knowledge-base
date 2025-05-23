@@ -82,7 +82,7 @@ Context: [Broader implications or consequences, if relevant.]
 [Second point related to this section.]
 [Additional points as needed.]
 
-[Add more sections as necessary.]
+[Add more sections as necessary. Do not include a References section.]
 """
 
 

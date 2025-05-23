@@ -5,9 +5,9 @@ import base64
 import hashlib
 import os
 import re
-from datetime import datetime
 from venv import logger
 
+from datetime import datetime
 from googleapiclient.discovery import build
 from ics import Calendar
 from langchain_community.document_loaders import (
@@ -17,7 +17,8 @@ from langchain_community.document_loaders import (
     UnstructuredImageLoader,
 )
 from langchain_core.documents import Document
-from models.db import vectorstore
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from models.db import vstore
 from controllers.topic import detector
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -99,7 +100,6 @@ class GmailService():
         Returns:
             None
         """
-        ids = []
         documents = []
         for message in self.search(query):
             msg = self.service.users().messages().get(
@@ -139,14 +139,16 @@ class GmailService():
                         body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
                         body = re.sub(r"<[^>]+>", "", body)  # Remove HTML tags
                         metadata["mimeType"] = part["mimeType"]
+                        metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
-                        ids.append(msg["id"])
+                        # ids.append(msg["id"])
                     elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
                         body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
                         body = re.sub(r"<[^>]+>", "", body)
                         metadata["mimeType"] = part["mimeType"]
+                        metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
-                        ids.append(msg["id"])
+                        # ids.append(msg["id"])
                     if part["filename"]:
                         attachment_id = part["body"]["attachmentId"]
                         logger.info("Downloading attachment: %s", part["filename"])
@@ -192,11 +194,10 @@ class GmailService():
                                             ),
                                             "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
                                             "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
-                                        },
+                                            "id": f"{msg_id}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}"
+                                        }
                                     )
                                 )
-                                ids.append(
-                                    f"{msg_id}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}")
                         if os.path.exists(path):
                             os.remove(path)
                         for index, document in enumerate(attach_docs or []):
@@ -209,29 +210,42 @@ class GmailService():
                                 for key, value in document.metadata.items()
                                 if key in ["attachment", "page"]
                             }
+                            document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
                             document.metadata.update(metadata)
                             documents.append(document)
-                            ids.append(f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}")
             elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
                 body = re.sub(r"<[^>]+>", "", body)
                 metadata["mimeType"] = msg["payload"]["mimeType"]
+                metadata["id"] = msg_id
                 documents.append(Document(page_content=body, metadata=metadata))
-                ids.append(msg_id)
             elif msg["payload"]["mimeType"] == "text/html" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
                 body = re.sub(r"<[^>]+>", "", body)
                 metadata["mimeType"] = msg["payload"]["mimeType"]
-                documents.append(Document(page_content=body, metadata=metadata))
-                ids.append(msg_id)
+                metadata["id"] = msg_id
+                documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
             related_topic = detector.invoke({"document": documents}).model_dump()['verdict']
             if "multipart/alternative" in mime_types and len(mime_types) == 1 and not related_topic:
                 logger.info("Only multipart/alternative found in the email.")
             else:
-                try:
-                    vectorstore.add_documents(documents=documents, ids=ids)
-                except ValueError as e:
-                    logger.error("Error adding documents to vectorstore: %s", e)
+                vstore.upload(documents)
+                # try:
+                #     text_splitter = RecursiveCharacterTextSplitter(
+                #         chunk_size=2000,  # or 1500, depending on your needs
+                #         chunk_overlap=200,
+                #         length_function=token_length,
+                #         is_separator_regex=False,
+                #         separators = ["\n\n", "\n", "\t", "\\n", "\r\n\r\n", " ", ".", ","]
+                #     )
+                #     chunks = text_splitter.split_documents(documents)
+                #     ids = []
+                #     for index, chunk in enumerate(chunks):
+                #         _id = f"{chunk.metadata["id"]}-{str(index)}"
+                #         ids.append(_id)
+                #     vstore.add_documents_with_retry(documents, ids)
+                # except ValueError as e:
+                #     logger.error("Error adding documents to vectorstore: %s", e)
 
     def search(self, query, max_results=10, check_next_page=False) -> list:
         """

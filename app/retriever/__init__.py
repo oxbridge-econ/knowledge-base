@@ -28,7 +28,6 @@ class DocRetriever(BaseRetriever):
         super().__init__()
         _filter={}
         _filter.update({"user_id": req.user_id})
-        print(_filter)
         self.retriever = vectorstore.as_retriever(
             search_type='similarity',
             search_kwargs={
@@ -41,8 +40,6 @@ class DocRetriever(BaseRetriever):
     def _get_relevant_documents(self, query: str, *, run_manager) -> list:
         try:
             retrieved_docs = self.retriever.invoke(query)
-            # doc_lst = []
-            print(retrieved_docs)
             for doc in retrieved_docs:
                 doc.metadata['id'] = doc.id
                 # date = str(doc.metadata['publishDate'])
