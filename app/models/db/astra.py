@@ -4,6 +4,7 @@ import re
 import time
 from venv import logger
 import tiktoken
+import astrapy
 import langchain_astradb
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_astradb import AstraDBVectorStore
@@ -55,13 +56,14 @@ class VectorStore(AstraDBVectorStore):
         for attempt in range(max_retries):
             try:
                 self.add_documents(chunks, ids=ids)
-            except (ConnectionError, TimeoutError, langchain_astradb.vectorstores.AstraDBVectorStoreError) as e:
+            except (ConnectionError, TimeoutError, astrapy.exceptions.data_api_exceptions.DataAPIResponseException,
+                    langchain_astradb.vectorstores.AstraDBVectorStoreError) as e:
                 for chunk in chunks:
                     url_pattern = r'https?://[^\s]+'
                     chunk.page_content = re.sub(url_pattern, '[URL]', chunk.page_content)
                 logger.info("Attempt %d failed: %s", attempt + 1, e)
                 if attempt < max_retries - 1:
-                    time.sleep(10)
+                    time.sleep(45)
                 else:
                     logger.error("Max retries reached. Operation failed.")
                     logger.error(ids)
