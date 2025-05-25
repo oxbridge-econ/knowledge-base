@@ -168,7 +168,8 @@ class GmailService():
                         elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
                             try:
                                 attach_docs = UnstructuredImageLoader(path).load()
-                            except ValueError as e:  # Replace with the specific exception type
+                                # attach_docs = [doc for doc in raw_docs if doc is not None and str(doc) != "None"]
+                            except (ValueError, TypeError) as e:  # Replace with the specific exception type
                                 logger.error("Error loading image: %s", e)
                         elif part["filename"].endswith(".csv"):
                             attach_docs = CSVLoader(path).load()
