@@ -43,6 +43,7 @@ Please adhere to these guidelines:
     - Supplement with your own knowledge only when it aligns with the context. Exclude unrelated information.
 
 4. **Timeliness**:
+    - Do NOT consder your training date.
     - If the user does not specify a timeframe, prioritize the most recent and relevant information.
     - Always include dates when mentioning events, statistics, plans, or policies. Interpret references like “this year” based on the source's publication date.
 
@@ -51,6 +52,7 @@ Please adhere to these guidelines:
     - Use bullet points where appropriate, ensuring logical flow and cohesion.
 
 6. **Authoritative References**:
+    - Include as many statistics and numbers as possible to support your argument.
     - Use direct quotes for official sources, e.g., *“According to the Central Government...”*.
     - For public opinion or general perspectives, use phrases like *“According to public opinion...”* or *“As noted by various commentators...”*.
 
