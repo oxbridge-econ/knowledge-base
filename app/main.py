@@ -1,62 +1,13 @@
 """Module to handle the main FastAPI application and its endpoints."""
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from jose import jwt
 from router import content, service, file
-from starlette.middleware.base import BaseHTTPMiddleware
+from schema import task_states
 
 SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
-
-class SessionMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware to manage session data using JWT (JSON Web Tokens) stored in cookies.
-
-    This middleware intercepts incoming HTTP requests to extract session data from a 
-    "session_token" cookie. If the cookie exists and contains a valid JWT, the session 
-    data is decoded and attached to the request's state. If the cookie is missing or 
-    invalid, an empty session is initialized.
-
-    After processing the request, the middleware encodes the updated session data into 
-    a new JWT and sets it as a "session_token" cookie in the response.
-
-    Attributes:
-        SECRET_KEY (str): The secret key used to encode and decode the JWT.
-        ALGORITHM (str): The algorithm used for encoding and decoding the JWT.
-
-    Methods:
-        dispatch(request: Request, call_next): Intercepts the request to manage session 
-        data and modifies the response to include the updated session token.
-
-    Cookie Parameters:
-        session_token (str): A JWT containing session data. This cookie is HTTP-only 
-        and has a maximum age of 3600 seconds (1 hour).
-
-    Raises:
-        jwt.JWTError: If the session token cannot be decoded due to invalid signature 
-        or other issues.
-    """
-    async def dispatch(self, request: Request, call_next):
-        session_token = request.cookies.get("session_token")
-        if session_token:
-            try:
-                session_data = jwt.decode(session_token, SECRET_KEY, algorithms=[ALGORITHM])
-            except jwt.JWTError:
-                session_data = {}
-        else:
-            session_data = {}
-        request.state.session = session_data
-        response = await call_next(request)
-        session_token = jwt.encode(request.state.session, SECRET_KEY, algorithm=ALGORITHM)
-        response.set_cookie(
-            key="session_token",
-            value=session_token,
-            httponly=True,
-            max_age=3600
-        )
-        return response
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
@@ -79,7 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(SessionMiddleware)
 
 @app.get("/_health")
 def health():
@@ -89,3 +39,18 @@ def health():
     :return: A string "OK" indicating the health status.
     """
     return "OK"
+
+@app.get("/status/{task_id}")
+async def get_status(task_id: str):
+    """
+    Retrieve the status of a task by its ID.
+
+    Args:
+        task_id (str): The unique identifier of the task.
+
+    Returns:
+        dict: A dictionary containing the task ID and its status. If the task ID is not found,
+              the status will be "NOT_FOUND".
+    """
+    status = task_states.get(task_id, "NOT_FOUND")
+    return {"task_id": task_id, "status": status}

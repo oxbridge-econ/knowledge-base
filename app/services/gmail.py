@@ -17,7 +17,7 @@ from langchain_community.document_loaders import (
     UnstructuredImageLoader,
 )
 from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from schema import task_states
 from models.db import vstore
 from controllers.topic import detector
 
@@ -89,7 +89,7 @@ class GmailService():
             query_parts.append(f'before:{params["before"]}')
         return ' '.join(query_parts)
 
-    def collect(self, query):
+    def collect(self, query, task_id):
         """
         Main function to search and list emails from Gmail.
 
@@ -101,6 +101,7 @@ class GmailService():
             None
         """
         documents = []
+        task_states[task_id] = "In Progress"
         for message in self.search(query):
             msg = self.service.users().messages().get(
                 userId="me", id=message["id"], format="full").execute()
@@ -168,7 +169,6 @@ class GmailService():
                         elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
                             try:
                                 attach_docs = UnstructuredImageLoader(path).load()
-                                # attach_docs = [doc for doc in raw_docs if doc is not None and str(doc) != "None"]
                             except (ValueError, TypeError) as e:  # Replace with the specific exception type
                                 logger.error("Error loading image: %s", e)
                         elif part["filename"].endswith(".csv"):
@@ -230,23 +230,9 @@ class GmailService():
             if "multipart/alternative" in mime_types and len(mime_types) == 1 and not related_topic:
                 logger.info("Only multipart/alternative found in the email.")
             else:
-                vstore.upload(documents)
-                # try:
-                #     text_splitter = RecursiveCharacterTextSplitter(
-                #         chunk_size=2000,  # or 1500, depending on your needs
-                #         chunk_overlap=200,
-                #         length_function=token_length,
-                #         is_separator_regex=False,
-                #         separators = ["\n\n", "\n", "\t", "\\n", "\r\n\r\n", " ", ".", ","]
-                #     )
-                #     chunks = text_splitter.split_documents(documents)
-                #     ids = []
-                #     for index, chunk in enumerate(chunks):
-                #         _id = f"{chunk.metadata["id"]}-{str(index)}"
-                #         ids.append(_id)
-                #     vstore.add_documents_with_retry(documents, ids)
-                # except ValueError as e:
-                #     logger.error("Error adding documents to vectorstore: %s", e)
+                result = vstore.upload(documents)
+                task_states[task_id] = result['status']
+
 
     def search(self, query, max_results=10, check_next_page=False) -> list:
         """

@@ -1,8 +1,10 @@
 """Module for defining the main routes of the API."""
+import uuid
 from pathlib import Path
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from controllers.loader import load_docx, load_pdf, load_img
+from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])
 
@@ -15,7 +17,7 @@ ALLOWED_FILE_TYPES = {
 }
 
 @router.post("")
-async def preview(file: UploadFile = File(...)) -> JSONResponse:
+async def load(file: UploadFile = File(...)) -> JSONResponse:
     """
     Handles the chat POST request.
 
@@ -27,17 +29,20 @@ async def preview(file: UploadFile = File(...)) -> JSONResponse:
     """
     content = await file.read()
     result = []
+    task_id = f"{str(uuid.uuid4())}"
+    task_states[task_id] = "Pending"
     if file.content_type not in ALLOWED_FILE_TYPES \
         or Path(file.filename).suffix.lower() != ALLOWED_FILE_TYPES.get(file.content_type):
+        task_states[task_id] = "Failed"
         raise HTTPException(
             status_code=400,
             detail="Invalid file type. Only PDF, TXT, and DOCX are allowed."
         )
     elif file.content_type == "application/pdf":
-        result = load_pdf(content, file.filename)
+        load_pdf(content, file.filename, task_id)
     elif file.content_type == \
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        result = load_docx(content, file.filename)
+        load_docx(content, file.filename, task_id)
     elif file.content_type in ["image/png", "image/jpeg"]:
-        result = load_img(content, file.filename)
-    return JSONResponse(content=result)
+        load_img(content, file.filename, task_id)
+    return JSONResponse(content={"id": task_id, "status": task_states[task_id]})

@@ -1,10 +1,10 @@
 """Module containing the data models for the application."""
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from pydantic import BaseModel, Field
-from sympy import N
 
+task_states: Dict[str, str] = {}
 
 class EmailQuery(BaseModel):
     """

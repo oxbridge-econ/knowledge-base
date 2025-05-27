@@ -14,8 +14,9 @@ from pdf2image import convert_from_path
 from pydantic import BaseModel
 from pypdf import PdfReader
 
+from schema import task_states
 from models.llm import client
-from models.db import vectorstore
+from models.db import vstore
 
 text_splitter = RecursiveCharacterTextSplitter()
 
@@ -100,7 +101,7 @@ def extract_text_from_image(image):
     )
     return json.loads(response.choices[0].message.content)["content"]
 
-def load_pdf(content: bytes, filename: str):
+def load_pdf(content: bytes, filename: str, task_id: str):
     """
     Loads and processes PDF files from a specified directory.
 
@@ -110,7 +111,9 @@ def load_pdf(content: bytes, filename: str):
     OCR.
 
     Args:
-        directory (str): The path to the directory containing the PDF files.
+        content (bytes): The binary content of the image file.
+        filename (str): The name to use when saving the file temporarily.
+        task_id (str): The unique identifier for the task.
 
     Returns:
         list: A list of Document objects, where each object contains the page content
@@ -130,6 +133,7 @@ def load_pdf(content: bytes, filename: str):
     with open(path, "wb") as f:
         f.write(content)
     try:
+        task_states[task_id] = "In Progress"
         pdf = PdfReader(path)
         for page_num, page in enumerate(pdf.pages):
             contain = check_image(page)
@@ -144,22 +148,19 @@ def load_pdf(content: bytes, filename: str):
                 metadata={"source": filename, "page": page_num + 1})
             documents.append(doc)
         os.remove(path)
-        threading.Thread(target=upload, args=[documents]).start()
-        return {
-            "success": True
-            # "documents": [doc.model_dump() for doc in documents]
-        }
-    except (FileNotFoundError, ValueError, OSError) as e:
+        threading.Thread(target=upload, args=[documents, task_id]).start()
+    except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
-        return {"success": False, "error": str(e)}
+        task_states[task_id] = "Failed"
 
-def load_img(content: bytes, filename: str):
+def load_img(content: bytes, filename: str, task_id: str):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
     Args:
         content (bytes): The binary content of the image file.
         filename (str): The name to use when saving the file temporarily.
+        task_id (str): The unique identifier for the task.
 
     Returns:
         list: A list of dictionaries representing the extracted documents.
@@ -169,57 +170,23 @@ def load_img(content: bytes, filename: str):
         - Uploads the extracted documents using the upload function.
     """
     try:
+        task_states[task_id] = "In Progress"
         documents = []
         text = extract_text_from_image(Image.open(BytesIO(content)))
         doc = Document(page_content=text, metadata={"source": filename})
         documents.append(doc)
-        threading.Thread(target=upload, args=[documents]).start()
-        return {
-            "success": True
-            # "documents": [doc.model_dump() for doc in documents]
-        }
-    except (FileNotFoundError, ValueError, OSError) as e:
-        return {"success": False, "error": str(e)}
+        threading.Thread(target=upload, args=[documents, task_id]).start()
+    except (FileNotFoundError, ValueError, OSError):
+        task_states[task_id] = "Failed"
 
-# def load_jsonl(content: bytes, filename: str):
-#     """
-#     Reads a JSONL file and converts its content into a list of Document objects.
-
-#     Args:
-#         path (str): Path to the JSONL file.
-
-#     Returns:
-#         list: A list of Document objects.
-#     """
-#     documents = []
-#     path = os.path.join("/tmp", filename)
-#     with open(path, "wb") as f:
-#         f.write(content)
-#     with open(path, "r", encoding="utf-8") as file:
-#         for line in file:
-#             json_obj = json.loads(line.strip())
-#             metadata = {
-#                 "id": json_obj.get("id", ""),
-#                 "url": json_obj.get("url", ""),
-#                 "title": json_obj.get("title", ""),
-#                 "ts": json_obj.get("ts", "")
-#             }
-#             if json_obj.get("mine") == "text/html":
-#                 text = base64.urlsafe_b64decode(json_obj.get("text", "")).decode("utf-8")
-#             else:
-#                 text = json_obj.get("text", "")
-#             doc = Document(page_content=text, metadata=metadata)
-#             documents.append(doc)
-#         os.remove(path)
-#     documents = []
-
-def load_docx(content: bytes, filename: str):
+def load_docx(content: bytes, filename: str, task_id: str):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
     Args:
         content (bytes): The binary content of the DOCX file.
         filename (str): The name to use when saving the file temporarily.
+        task_id (str): The unique identifier for the task.
 
     Returns:
         list: A list of dictionaries representing the extracted documents.
@@ -230,26 +197,24 @@ def load_docx(content: bytes, filename: str):
     """
     path = os.path.join("/tmp", filename)
     try:
+        task_states[task_id] = "In Progress"
         with open(path, "wb") as f:
             f.write(content)
         documents = Docx2txtLoader(file_path=path).load()
         os.remove(path)
-        threading.Thread(target=upload, args=[documents]).start()
-        return {
-            "success": True
-            # "documents": [doc.model_dump() for doc in documents]
-        }
-    except (FileNotFoundError, ValueError, OSError) as e:
+        threading.Thread(target=upload, args=[documents, task_id]).start()
+    except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
-        return {"success": False, "error": str(e)}
+        task_states[task_id] = "Failed"
 
-def upload(docs):
+def upload(docs, task_id):
     """
     Processes a list of documents, splits them into smaller chunks, updates their metadata,
     generates unique IDs for each chunk, and adds them to a vector store.
 
     Args:
         docs (list): A list of document objects to be processed.
+        task_id (str): The unique identifier for the task.
 
     Metadata Processing:
         - Extracts and updates the "page" metadata if "page_label" exists.
@@ -285,4 +250,5 @@ def upload(docs):
             else:
                 ids.append(f"{document.metadata['id']}-{index}")
             documents.append(document)
-    vectorstore.add_documents(documents=documents, ids=ids)
+    result = vstore.add_documents_with_retry(documents, ids)
+    task_states[task_id] = result['status']

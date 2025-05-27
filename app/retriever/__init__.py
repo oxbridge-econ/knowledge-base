@@ -2,7 +2,7 @@
 from venv import logger
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores import VectorStoreRetriever
-from models.db import vectorstore, vstore
+from models.db import vstore
 
 class DocRetriever(BaseRetriever):
     """

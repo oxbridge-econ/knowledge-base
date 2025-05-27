@@ -56,6 +56,7 @@ class VectorStore(AstraDBVectorStore):
         for attempt in range(max_retries):
             try:
                 self.add_documents(chunks, ids=ids)
+                return {"status": "Succeeded"}
             except (ConnectionError, TimeoutError, astrapy.exceptions.data_api_exceptions.DataAPIResponseException,
                     langchain_astradb.vectorstores.AstraDBVectorStoreError) as e:
                 for chunk in chunks:
@@ -67,6 +68,7 @@ class VectorStore(AstraDBVectorStore):
                 else:
                     logger.error("Max retries reached. Operation failed.")
                     logger.error(ids)
+                    return {"status": "Failed"}
     
     def upload(self, documents):
         """
@@ -88,7 +90,7 @@ class VectorStore(AstraDBVectorStore):
         """
         try:
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=2000,  # or 1500, depending on your needs
+                chunk_size=2000,
                 chunk_overlap=200,
                 length_function=token_length,
                 is_separator_regex=False,
@@ -99,6 +101,8 @@ class VectorStore(AstraDBVectorStore):
             for index, chunk in enumerate(chunks):
                 _id = f"{chunk.metadata['id']}-{str(index)}"
                 ids.append(_id)
-            self.add_documents_with_retry(documents, ids)
+            result = self.add_documents_with_retry(chunks, ids)
+            return result
         except ValueError as e:
             logger.error("Error adding documents to vectorstore: %s", e)
+            return {"status": "Failed"}
