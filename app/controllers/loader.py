@@ -1,4 +1,5 @@
 """Module to extract text from PDF files and images using Azure OpenAI's GPT-4o-mini model."""
+from ast import List
 import base64
 import hashlib
 import json
@@ -101,7 +102,7 @@ def extract_text_from_image(image):
     )
     return json.loads(response.choices[0].message.content)["content"]
 
-def load_pdf(content: bytes, filename: str, task_id: str):
+def load_pdf(content: bytes, filename: str, email: str, task_id: str):
     """
     Loads and processes PDF files from a specified directory.
 
@@ -113,6 +114,7 @@ def load_pdf(content: bytes, filename: str, task_id: str):
     Args:
         content (bytes): The binary content of the image file.
         filename (str): The name to use when saving the file temporarily.
+        email (str): The email address of the user, used for metadata.
         task_id (str): The unique identifier for the task.
 
     Returns:
@@ -148,18 +150,19 @@ def load_pdf(content: bytes, filename: str, task_id: str):
                 metadata={"source": filename, "page": page_num + 1})
             documents.append(doc)
         os.remove(path)
-        threading.Thread(target=upload, args=[documents, task_id]).start()
+        threading.Thread(target=upload, args=[documents, email, task_id]).start()
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
         task_states[task_id] = "Failed"
 
-def load_img(content: bytes, filename: str, task_id: str):
+def load_img(content: bytes, filename: str, email: str, task_id: str):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
     Args:
         content (bytes): The binary content of the image file.
         filename (str): The name to use when saving the file temporarily.
+        email (str): The email address of the user, used for metadata.
         task_id (str): The unique identifier for the task.
 
     Returns:
@@ -175,17 +178,18 @@ def load_img(content: bytes, filename: str, task_id: str):
         text = extract_text_from_image(Image.open(BytesIO(content)))
         doc = Document(page_content=text, metadata={"source": filename})
         documents.append(doc)
-        threading.Thread(target=upload, args=[documents, task_id]).start()
+        threading.Thread(target=upload, args=[documents, email, task_id]).start()
     except (FileNotFoundError, ValueError, OSError):
         task_states[task_id] = "Failed"
 
-def load_docx(content: bytes, filename: str, task_id: str):
+def load_docx(content: bytes, filename: str, email: str, task_id: str):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
     Args:
         content (bytes): The binary content of the DOCX file.
         filename (str): The name to use when saving the file temporarily.
+        email (str): The email address of the user, used for metadata.
         task_id (str): The unique identifier for the task.
 
     Returns:
@@ -202,18 +206,19 @@ def load_docx(content: bytes, filename: str, task_id: str):
             f.write(content)
         documents = Docx2txtLoader(file_path=path).load()
         os.remove(path)
-        threading.Thread(target=upload, args=[documents, task_id]).start()
+        threading.Thread(target=upload, args=[documents, email, task_id]).start()
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
         task_states[task_id] = "Failed"
 
-def upload(docs, task_id):
+def upload(docs: list[Document], email: str, task_id: str):
     """
     Processes a list of documents, splits them into smaller chunks, updates their metadata,
     generates unique IDs for each chunk, and adds them to a vector store.
 
     Args:
         docs (list): A list of document objects to be processed.
+        email (str): The email address of the user, used for metadata.
         task_id (str): The unique identifier for the task.
 
     Metadata Processing:
@@ -245,6 +250,7 @@ def upload(docs, task_id):
             }
             document.metadata["id"] = str(
                 hashlib.sha256(document.metadata['attachment'].encode()).hexdigest())
+            document.metadata["userId"] = email
             if "page" in document.metadata:
                 ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
             else:

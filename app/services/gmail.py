@@ -124,7 +124,6 @@ class GmailService():
             )
             metadata["userId"] = self.service.users().getProfile(
                 userId="me").execute().get("emailAddress")
-            ids = []
             documents = []
             mime_types = []
             if msg["payload"]["mimeType"] in [
