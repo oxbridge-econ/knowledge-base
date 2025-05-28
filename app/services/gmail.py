@@ -120,8 +120,9 @@ class GmailService():
                 elif header["name"] == "Cc":
                     metadata["cc"] = header["value"]
             metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000).strftime(
-                "%d/%m/%Y %H:%M:%S"
+                "%Y-%m-%dT%H:%M:%S"
             )
+            metadata["lastModified"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             metadata["userId"] = self.service.users().getProfile(
                 userId="me").execute().get("emailAddress")
             documents = []
@@ -201,7 +202,6 @@ class GmailService():
                         if os.path.exists(path):
                             os.remove(path)
                         for index, document in enumerate(attach_docs or []):
-                            document.metadata["mimeType"] = part["mimeType"]
                             if "page_label" in document.metadata:
                                 document.metadata["page"] = document.metadata["page_label"]
                             document.metadata["attachment"] = part["filename"]
@@ -210,8 +210,9 @@ class GmailService():
                                 for key, value in document.metadata.items()
                                 if key in ["attachment", "page"]
                             }
-                            document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
                             document.metadata.update(metadata)
+                            document.metadata["mimeType"] = part["mimeType"]
+                            document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
                             documents.append(document)
             elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
