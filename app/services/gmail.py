@@ -7,7 +7,7 @@ import os
 import re
 from venv import logger
 
-from datetime import datetime
+from datetime import datetime, timezone
 from googleapiclient.discovery import build
 from ics import Calendar
 from langchain_community.document_loaders import (
@@ -119,8 +119,8 @@ class GmailService():
                     logger.info("subject: %s", metadata["subject"])
                 elif header["name"] == "Cc":
                     metadata["cc"] = header["value"]
-            metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000)
-            metadata["lastModified"] = datetime.now()
+            metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
+            metadata["lastModified"] = datetime.now(timezone.utc)
             metadata["userId"] = self.service.users().getProfile(
                 userId="me").execute().get("emailAddress")
             documents = []
