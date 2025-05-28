@@ -119,10 +119,8 @@ class GmailService():
                     logger.info("subject: %s", metadata["subject"])
                 elif header["name"] == "Cc":
                     metadata["cc"] = header["value"]
-            metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000).strftime(
-                "%Y-%m-%dT%H:%M:%S"
-            )
-            metadata["lastModified"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000)
+            metadata["lastModified"] = datetime.now()
             metadata["userId"] = self.service.users().getProfile(
                 userId="me").execute().get("emailAddress")
             documents = []
