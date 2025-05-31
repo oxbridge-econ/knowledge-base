@@ -216,8 +216,6 @@ class GmailService():
                             document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
                             if detector.invoke({"document": document}).model_dump()['verdict']:
                                 documents.append(document)
-                                print(document)
-                                print("*"*100)
                             else:
                                 logger.info("Document %s is not related to the topic.", document.metadata["id"])
             elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:

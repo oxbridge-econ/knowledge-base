@@ -257,8 +257,6 @@ def upload(docs: list[Document], email: str, task_id: str):
                 ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
             else:
                 ids.append(f"{document.metadata['id']}-{index}")
-            print(document)
-            print("*"*100)
             documents.append(document)
     result = vstore.add_documents_with_retry(documents, ids)
     task_states[task_id] = result['status']
