@@ -242,19 +242,23 @@ def upload(docs: list[Document], email: str, task_id: str):
         for index, document in enumerate(text_splitter.split_documents([doc])):
             if "page_label" in document.metadata:
                 document.metadata["page"] = int(document.metadata["page_label"])
-            document.metadata["attachment"] = document.metadata["source"].replace("{FOLDER}/", "")
+            attachment = document.metadata["source"].replace("{FOLDER}/", "")
+            document.metadata["title"] = attachment.split(".")[0]
+            document.metadata["ext"] = attachment.split(".")[-1]
             document.metadata = {
                 key: value
                 for key, value in document.metadata.items()
-                if key in ["attachment", "page"]
+                if key in ["page", "title", "ext"]
             }
             document.metadata["id"] = str(
-                hashlib.sha256(document.metadata['attachment'].encode()).hexdigest())
+                hashlib.sha256((email + attachment).encode()).hexdigest())
             document.metadata["userId"] = email
             if "page" in document.metadata:
                 ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
             else:
                 ids.append(f"{document.metadata['id']}-{index}")
+            print(document)
+            print("*"*100)
             documents.append(document)
     result = vstore.add_documents_with_retry(documents, ids)
     task_states[task_id] = result['status']

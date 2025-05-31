@@ -202,16 +202,24 @@ class GmailService():
                         for index, document in enumerate(attach_docs or []):
                             if "page_label" in document.metadata:
                                 document.metadata["page"] = document.metadata["page_label"]
-                            document.metadata["attachment"] = part["filename"]
+                            document.metadata["attachId"] = part["body"]["attachmentId"]
+                            attachment = part["filename"]
+                            document.metadata["title"] = attachment.split(".")[0]
+                            document.metadata["ext"] = attachment.split(".")[-1]
                             document.metadata = {
                                 key: value
                                 for key, value in document.metadata.items()
-                                if key in ["attachment", "page"]
+                                if key in ["ext", "page", "title", "attachId"] and value is not None and value != ""
                             }
                             document.metadata.update(metadata)
                             document.metadata["mimeType"] = part["mimeType"]
                             document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
-                            documents.append(document)
+                            if detector.invoke({"document": document}).model_dump()['verdict']:
+                                documents.append(document)
+                                print(document)
+                                print("*"*100)
+                            else:
+                                logger.info("Document %s is not related to the topic.", document.metadata["id"])
             elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
                 body = re.sub(r"<[^>]+>", "", body)
@@ -224,12 +232,13 @@ class GmailService():
                 metadata["mimeType"] = msg["payload"]["mimeType"]
                 metadata["id"] = msg_id
                 documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
-            related_topic = detector.invoke({"document": documents}).model_dump()['verdict']
-            if "multipart/alternative" in mime_types and len(mime_types) == 1 and not related_topic:
+            if "multipart/alternative" in mime_types and len(mime_types) == 1:
                 logger.info("Only multipart/alternative found in the email.")
             else:
-                result = vstore.upload(documents)
-                task_states[task_id] = result['status']
+                # result = vstore.upload(documents)
+                # task_states[task_id] = result['status']
+                task_states[task_id] = "Succeed"
+
 
 
     def search(self, query, max_results=10, check_next_page=False) -> list:

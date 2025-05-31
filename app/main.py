@@ -3,7 +3,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from router import content, service, file
+from router import service, file
 from schema import task_states
 
 SECRET_KEY = "your-secret-key"
@@ -15,7 +15,6 @@ logging.getLogger().setLevel(logging.INFO)
 
 app = FastAPI(docs_url="/")
 
-app.include_router(content.router)
 app.include_router(service.router)
 app.include_router(file.router)
 
