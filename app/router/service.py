@@ -5,6 +5,7 @@ import uuid
 from google.oauth2.credentials import Credentials
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
+from openai import project
 
 from services import GmailService
 from schema import EmailQuery, task_states
@@ -23,13 +24,13 @@ def collect(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    collection = MongodbClient["user"]["FinFAST"]
-    cred_dict = collection.find_one({"_id": email})
+    collection = MongodbClient["service"]["gmail"]
+    cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
     if cred_dict is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
     credentials = Credentials(
-        token=cred_dict["gmail"]["token"],
-        refresh_token=cred_dict["gmail"]["refresh_token"],
+        token=cred_dict["token"],
+        refresh_token=cred_dict["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("CLIENT_ID"),
         client_secret=os.environ.get("CLIENT_SECRET"),
@@ -55,13 +56,13 @@ def preview(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    collection = MongodbClient["user"]["FinFAST"]
-    cred_dict = collection.find_one({"_id": email})
+    collection = MongodbClient["service"]["gmail"]
+    cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
     if cred_dict is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
     credentials = Credentials(
-        token=cred_dict["gmail"]["token"],
-        refresh_token=cred_dict["gmail"]["refresh_token"],
+        token=cred_dict["token"],
+        refresh_token=cred_dict["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("CLIENT_ID"),
         client_secret=os.environ.get("CLIENT_SECRET"),
@@ -71,6 +72,53 @@ def preview(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
         return JSONResponse(content={"valid": False}, status_code=401)
     service = GmailService(credentials)
     return JSONResponse(content=service.get(body))
+
+@router.get("/gmail/query")
+def get_query(email: str = Query(...)) -> JSONResponse:
+    """
+    Submits an email query and stores or updates it in the MongoDB collection.
+
+    Args:
+        body (EmailQuery): The email query data provided in the request body.
+        email (str): The email address, provided as a query parameter.
+
+    Returns:
+        JSONResponse: A JSON response indicating whether the query was successfully updated ("success")
+        or if there were no changes ("no changes").
+    """
+    collection = MongodbClient["service"]["gmail"]
+    result = collection.find_one({"_id": email}, projection={"query": 1})
+    del result["_id"]
+    return JSONResponse(content=result["query"] if "query" in result else {}, status_code=200)
+
+@router.post("/gmail/query")
+def save_query(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
+    """
+    save an email query and stores or updates it in the MongoDB collection.
+
+    Args:
+        body (EmailQuery): The email query data provided in the request body.
+        email (str): The email address, provided as a query parameter.
+
+    Returns:
+        JSONResponse: A JSON response indicating whether the query was successfully updated ("success")
+        or if there were no changes ("no changes").
+    """
+    collection = MongodbClient["service"]["gmail"]
+    body = body.model_dump()
+    del body["max_results"]
+    data = {
+        "_id": email,
+        "query": {k: v for k, v in body.items() if v is not None}
+    }
+    result = collection.update_one(
+        { '_id': email },
+        { '$set': data },
+        upsert=True
+    )
+    if result.modified_count > 0:
+        return JSONResponse(content={"status": "success"}, status_code=200)
+    return JSONResponse(content={"status": "no changes"}, status_code=200)
 
 @router.get("/gmail")
 def valid(email: str = Query(...)) -> JSONResponse:
@@ -83,13 +131,13 @@ def valid(email: str = Query(...)) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    collection = MongodbClient["user"]["FinFAST"]
-    cred_dict = collection.find_one({"_id": email})
+    collection = MongodbClient["service"]["gmail"]
+    cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
     if cred_dict is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
     credentials = Credentials(
-        token=cred_dict["gmail"]["token"],
-        refresh_token=cred_dict["gmail"]["refresh_token"],
+        token=cred_dict["token"],
+        refresh_token=cred_dict["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("CLIENT_ID"),
         client_secret=os.environ.get("CLIENT_SECRET"),
