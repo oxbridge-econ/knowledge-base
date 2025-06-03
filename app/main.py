@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from router import service, file
 from schema import task_states
 
-SECRET_KEY = "your-secret-key"
-ALGORITHM = "HS256"
+# SECRET_KEY = "your-secret-key"
+# ALGORITHM = "HS256"
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')

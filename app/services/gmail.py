@@ -7,7 +7,7 @@ import os
 import re
 from venv import logger
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from googleapiclient.discovery import build
 from ics import Calendar
 from langchain_community.document_loaders import (
@@ -18,7 +18,6 @@ from langchain_community.document_loaders import (
 )
 from langchain_core.documents import Document
 from schema import task_states
-from models.db import vstore
 from controllers.topic import detector
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -119,7 +118,8 @@ class GmailService():
                     logger.info("subject: %s", metadata["subject"])
                 elif header["name"] == "Cc":
                     metadata["cc"] = header["value"]
-            metadata["date"] = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
+            metadata["date"] = datetime.fromtimestamp(
+                int(msg["internalDate"]) / 1000, tz=timezone.utc)
             metadata["lastModified"] = datetime.now(timezone.utc)
             metadata["userId"] = self.service.users().getProfile(
                 userId="me").execute().get("emailAddress")
@@ -167,7 +167,7 @@ class GmailService():
                         elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
                             try:
                                 attach_docs = UnstructuredImageLoader(path).load()
-                            except (ValueError, TypeError) as e:  # Replace with the specific exception type
+                            except (ValueError, TypeError) as e:
                                 logger.error("Error loading image: %s", e)
                         elif part["filename"].endswith(".csv"):
                             attach_docs = CSVLoader(path).load()
@@ -217,7 +217,8 @@ class GmailService():
                             if detector.invoke({"document": document}).model_dump()['verdict']:
                                 documents.append(document)
                             else:
-                                logger.info("Document %s is not related to the topic.", document.metadata["id"])
+                                logger.info("Document %s is not related to the topic.",
+                                            document.metadata["id"])
             elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
                 body = re.sub(r"<[^>]+>", "", body)
@@ -291,6 +292,8 @@ class GmailService():
                 msg = self.service.users().messages().get(
                     userId='me', id=message['id'], format='full').execute()
                 headers = msg['payload']['headers']
+                utc_dt = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
+                hkt_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
                 email_data = {
                     'subject': '',
                     'from': '',
@@ -298,6 +301,7 @@ class GmailService():
                     'cc': '',
                     'content': '',
                     'snippet': msg['snippet'] if 'snippet' in msg else '',
+                    "datetime": hkt_dt.strftime("%Y-%m-%d %H:%M:%S"),
                 }
                 for header in headers:
                     name = header['name'].lower()

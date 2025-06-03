@@ -28,8 +28,8 @@ def collect(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     if cred_dict is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
     credentials = Credentials(
-        token=cred_dict["token"],
-        refresh_token=cred_dict["refresh_token"],
+        token=cred_dict["gmail"]["token"],
+        refresh_token=cred_dict["gmail"]["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("CLIENT_ID"),
         client_secret=os.environ.get("CLIENT_SECRET"),
@@ -60,8 +60,8 @@ def preview(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     if cred_dict is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
     credentials = Credentials(
-        token=cred_dict["token"],
-        refresh_token=cred_dict["refresh_token"],
+        token=cred_dict["gmail"]["token"],
+        refresh_token=cred_dict["gmail"]["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("CLIENT_ID"),
         client_secret=os.environ.get("CLIENT_SECRET"),
@@ -88,8 +88,8 @@ def valid(email: str = Query(...)) -> JSONResponse:
     if cred_dict is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
     credentials = Credentials(
-        token=cred_dict["token"],
-        refresh_token=cred_dict["refresh_token"],
+        token=cred_dict["gmail"]["token"],
+        refresh_token=cred_dict["gmail"]["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("CLIENT_ID"),
         client_secret=os.environ.get("CLIENT_SECRET"),
