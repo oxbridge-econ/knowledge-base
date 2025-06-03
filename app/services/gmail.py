@@ -18,6 +18,7 @@ from langchain_community.document_loaders import (
 )
 from langchain_core.documents import Document
 from schema import task_states
+from models.db import vstore
 from controllers.topic import detector
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -101,7 +102,7 @@ class GmailService():
         """
         documents = []
         task_states[task_id] = "In Progress"
-        for message in self.search(query):
+        for message in self.search(query, max_results=500, check_next_page=True):
             msg = self.service.users().messages().get(
                 userId="me", id=message["id"], format="full").execute()
             metadata = {}
@@ -140,14 +141,12 @@ class GmailService():
                         metadata["mimeType"] = part["mimeType"]
                         metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
-                        # ids.append(msg["id"])
                     elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
                         body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
                         body = re.sub(r"<[^>]+>", "", body)
                         metadata["mimeType"] = part["mimeType"]
                         metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
-                        # ids.append(msg["id"])
                     if part["filename"]:
                         attachment_id = part["body"]["attachmentId"]
                         logger.info("Downloading attachment: %s", part["filename"])
@@ -234,13 +233,12 @@ class GmailService():
             if "multipart/alternative" in mime_types and len(mime_types) == 1:
                 logger.info("Only multipart/alternative found in the email.")
             else:
-                # result = vstore.upload(documents)
-                # task_states[task_id] = result['status']
-                task_states[task_id] = "Succeed"
+                result = vstore.upload(documents)
+                task_states[task_id] = result['status']
 
 
 
-    def search(self, query, max_results=10, check_next_page=False) -> list:
+    def search(self, query, max_results=500, check_next_page=False) -> list:
         """
         Searches for Gmail messages based on a query string.
 
@@ -272,7 +270,7 @@ class GmailService():
                 messages.extend(result["messages"])
         return messages
 
-    def get(self, query) -> list:
+    def preview(self, query) -> list:
         """
         Retrieve a list of emails with subject, to, from, cc, and content.
         
@@ -284,7 +282,7 @@ class GmailService():
             List of dictionaries containing email details
         """
         try:
-            messages = self.search(query, query.max_results)
+            messages = self.search(query, max_results=10)
             email_list = []
             if not messages:
                 return email_list

@@ -5,7 +5,6 @@ import uuid
 from google.oauth2.credentials import Credentials
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from openai import project
 
 from services import GmailService
 from schema import EmailQuery, task_states
@@ -71,7 +70,7 @@ def preview(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False}, status_code=401)
     service = GmailService(credentials)
-    return JSONResponse(content=service.get(body))
+    return JSONResponse(content=service.preview(body))
 
 @router.get("/gmail/query")
 def get_query(email: str = Query(...)) -> JSONResponse:
