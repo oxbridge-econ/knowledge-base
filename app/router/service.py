@@ -42,6 +42,17 @@ def collect(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     task_id = f"{str(uuid.uuid4())}"
     task_states[task_id] = "Pending"
     threading.Thread(target=service.collect, args=[body, task_id]).start()
+    body = body.model_dump()
+    del body["max_results"]
+    data = {
+        "_id": email,
+        "query": {k: v for k, v in body.items() if v is not None}
+    }
+    collection.update_one(
+        { '_id': email },
+        { '$set': data },
+        upsert=True
+    )
     return JSONResponse(content={"id": task_id, "status": task_states[task_id]})
 
 @router.post("/gmail/preview")

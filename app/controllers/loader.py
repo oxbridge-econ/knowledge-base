@@ -1,5 +1,4 @@
 """Module to extract text from PDF files and images using Azure OpenAI's GPT-4o-mini model."""
-from ast import List
 import base64
 import hashlib
 import json
