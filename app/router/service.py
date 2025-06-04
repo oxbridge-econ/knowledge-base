@@ -15,13 +15,26 @@ router = APIRouter(prefix="/service", tags=["service"])
 @router.post("/gmail/collect")
 def collect(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     """
-    Handles the chat POST request.
+    Collects Gmail data for a specified user and initiates an asynchronous collection task.
 
     Args:
-        query (ReqData): The request data containing the query parameters.
+        body (EmailQuery): The query parameters for the email collection.
+        email (str, optional): The user's email address, provided as a query parameter.
 
     Returns:
-        str: The generated response from the chat function.
+        JSONResponse: 
+            - If the user is not found, returns a 404 error with an appropriate message.
+            - If the user's credentials are invalid or expired, returns a 401 error.
+            - Otherwise, starts a background thread to collect emails, updates the user's query in the database,
+              and returns a JSON response containing the task ID and its initial status.
+
+    Raises:
+        None
+
+    Side Effects:
+        - Starts a background thread for email collection.
+        - Updates or inserts the user's query parameters in the MongoDB collection.
+        - Modifies the global `task_states` dictionary with the new task's status.
     """
     collection = MongodbClient["service"]["gmail"]
     cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
@@ -101,34 +114,34 @@ def get_query(email: str = Query(...)) -> JSONResponse:
     del result["_id"]
     return JSONResponse(content=result["query"] if "query" in result else {}, status_code=200)
 
-@router.post("/gmail/query")
-def save_query(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
-    """
-    save an email query and stores or updates it in the MongoDB collection.
+# @router.post("/gmail/query")
+# def save_query(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
+#     """
+#     save an email query and stores or updates it in the MongoDB collection.
 
-    Args:
-        body (EmailQuery): The email query data provided in the request body.
-        email (str): The email address, provided as a query parameter.
+#     Args:
+#         body (EmailQuery): The email query data provided in the request body.
+#         email (str): The email address, provided as a query parameter.
 
-    Returns:
-        JSONResponse: A JSON response indicating whether the query was successfully updated ("success")
-        or if there were no changes ("no changes").
-    """
-    collection = MongodbClient["service"]["gmail"]
-    body = body.model_dump()
-    del body["max_results"]
-    data = {
-        "_id": email,
-        "query": {k: v for k, v in body.items() if v is not None}
-    }
-    result = collection.update_one(
-        { '_id': email },
-        { '$set': data },
-        upsert=True
-    )
-    if result.modified_count > 0:
-        return JSONResponse(content={"status": "success"}, status_code=200)
-    return JSONResponse(content={"status": "no changes"}, status_code=200)
+#     Returns:
+#         JSONResponse: A JSON response indicating whether the query was successfully updated ("success")
+#         or if there were no changes ("no changes").
+#     """
+#     collection = MongodbClient["service"]["gmail"]
+#     body = body.model_dump()
+#     del body["max_results"]
+#     data = {
+#         "_id": email,
+#         "query": {k: v for k, v in body.items() if v is not None}
+#     }
+#     result = collection.update_one(
+#         { '_id': email },
+#         { '$set': data },
+#         upsert=True
+#     )
+#     if result.modified_count > 0:
+#         return JSONResponse(content={"status": "success"}, status_code=200)
+#     return JSONResponse(content={"status": "no changes"}, status_code=200)
 
 @router.get("/gmail")
 def valid(email: str = Query(...)) -> JSONResponse:
