@@ -55,8 +55,11 @@ class EmailQuery(BaseModel):
         """
         if after is None:
             after = (datetime.now() - timedelta(days=6 * 30)).strftime("%Y/%m/%d")
-        if before and before >= after:
-            raise ValueError("The 'before' date must be greater than the 'after' date.")
+        if before:
+            before_dt = datetime.strptime(before, "%Y/%m/%d")
+            after_dt = datetime.strptime(after, "%Y/%m/%d")
+            if before_dt <= after_dt:
+                raise ValueError("The 'before' date must be greater than the 'after' date.")
         return before, after
 
     def __init__(self, **data):
