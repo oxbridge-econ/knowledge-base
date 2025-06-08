@@ -3,7 +3,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from router import service, file
+from router import service, file, extract
 from schema import task_states
 
 logging.basicConfig(
@@ -14,6 +14,7 @@ app = FastAPI(docs_url="/")
 
 app.include_router(service.router)
 app.include_router(file.router)
+app.include_router(extract.router)
 
 origins = [
     "*"
