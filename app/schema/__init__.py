@@ -1,4 +1,5 @@
 """Module containing the data models for the application."""
+import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 
@@ -6,7 +7,7 @@ from pydantic import BaseModel, Field
 
 task_states: Dict[str, str] = {}
 
-class EmailQuery(BaseModel):
+class EmailFilter(BaseModel):
     """
     EmailQuery model representing the structure of an email query.
 
@@ -28,7 +29,7 @@ class EmailQuery(BaseModel):
     cc_email: Optional[str] = Field(None, alias="cc")
     has_words: Optional[str] = None
     not_has_words: Optional[str] = None
-    size: Optional[int] = None
+    # size: Optional[int] = None
     before: Optional[str] = None
     after: Optional[str] = None
     max_results: Optional[int] = Field(10, alias="maxResults")
@@ -66,6 +67,19 @@ class EmailQuery(BaseModel):
         super().__init__(**data)
         self.before, self.after = self.validate_before_after(self.before, self.after)
     max_results: Optional[int] = 10
+
+class EmailQuery(BaseModel):
+    """
+    EmailQuery represents a query for emails with optional filtering.
+
+    Attributes:
+        id (str): A unique identifier for the query, generated using UUIDv5 of current timestamp.
+        name (str, optional): An optional name for the query.
+        filter (EmailFilter, optional): An optional filter to apply to the email query.
+    """
+    id: str = str(uuid.uuid5(uuid.NAMESPACE_DNS, datetime.now().isoformat()))
+    name: str = None
+    filter: EmailFilter = None
 
 class ReqData(BaseModel):
     """

@@ -87,6 +87,10 @@ class GmailService():
             query_parts.append(f'after:{params["after"]}')
         if 'before' in params and params['before']:
             query_parts.append(f'before:{params["before"]}')
+        if 'has_words' in params and params['has_words']:
+            query_parts.append(f'"{params["has_words"]}"')
+        if 'not_has_words' in params and params['not_has_words']:
+            query_parts.append(f'-"{params["not_has_words"]}"')
         return ' '.join(query_parts)
 
     def collect(self, query, task_id):
@@ -208,7 +212,8 @@ class GmailService():
                             document.metadata = {
                                 key: value
                                 for key, value in document.metadata.items()
-                                if key in ["ext", "page", "title", "attachId"] and value is not None and value != ""
+                                if key in ["ext", "page", "title", "attachId"] \
+                                    and value is not None and value != ""
                             }
                             document.metadata.update(metadata)
                             document.metadata["mimeType"] = part["mimeType"]
@@ -254,7 +259,7 @@ class GmailService():
             - The `query` parameter supports Gmail's advanced search operators.
             - If `check_next_page` is True, will continue fetching messages until all are retrieved.
         """
-        query = self.parse_query(query.dict())
+        query = self.parse_query(query)
         result = self.service.users().messages().list(
             userId='me', q=query, maxResults=max_results).execute()
         messages = []
