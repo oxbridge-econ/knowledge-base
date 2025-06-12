@@ -112,6 +112,7 @@ class GmailService():
             metadata = {}
             metadata["threadId"] = msg["threadId"]
             metadata["msgId"] = msg["id"]
+            metadata["type"] = "gmail"
             msg_id = f"{msg['threadId']}-{msg['id']}"
             for header in msg["payload"]["headers"]:
                 if header["name"] == "From":

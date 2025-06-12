@@ -10,9 +10,9 @@ from services import GmailService
 from schema import EmailFilter, EmailQuery, task_states
 from models.db import MongodbClient
 
-router = APIRouter(prefix="/service", tags=["service"])
+router = APIRouter(prefix="gmail/service", tags=["service"])
 
-@router.post("/gmail/collect")
+@router.post("/collect")
 def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     """
     Collects Gmail data for a specified user and initiates an asynchronous collection task.
@@ -69,7 +69,7 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     )
     return JSONResponse(content={"id": task_id, "status": task_states[task_id]})
 
-@router.post("/gmail/preview")
+@router.post("/preview")
 def preview(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     """
     Handles the chat POST request.
@@ -97,7 +97,7 @@ def preview(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     service = GmailService(credentials)
     return JSONResponse(content=service.preview(body))
 
-@router.get("/gmail/query")
+@router.get("/query")
 def get_query(email: str = Query(...)) -> JSONResponse:
     """
     Submits an email query and stores or updates it in the MongoDB collection.
@@ -143,7 +143,7 @@ def valid(email: str = Query(...)) -> JSONResponse:
         return JSONResponse(content={"valid": False}, status_code=401)
     return JSONResponse(content={"valid": True})
 
-@router.get("/gmail/queries")
+@router.get("/queries")
 def get_queries(email: str = Query(...)) -> JSONResponse:
     """
     Retrieves all email queries for a specific user from the MongoDB collection.
@@ -159,7 +159,7 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     del result["_id"]
     return JSONResponse(content=result["queries"] if "queries" in result else {}, status_code=200)
 
-@router.post("/gmail/trigger")
+@router.post("/trigger")
 def trigger(body: EmailQuery, email: str = Query(...)) -> JSONResponse:
     """
     Collects Gmail data for a specified user and initiates an asynchronous collection task.

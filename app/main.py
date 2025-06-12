@@ -3,8 +3,8 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from router import service, file, extract
 from schema import task_states
+from router import gmail, file, extract
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
@@ -12,7 +12,7 @@ logging.getLogger().setLevel(logging.INFO)
 
 app = FastAPI(docs_url="/")
 
-app.include_router(service.router)
+app.include_router(gmail.router)
 app.include_router(file.router)
 app.include_router(extract.router)
 

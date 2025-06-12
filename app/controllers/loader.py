@@ -252,6 +252,7 @@ def upload(docs: list[Document], email: str, task_id: str):
             document.metadata["id"] = str(
                 hashlib.sha256((email + attachment).encode()).hexdigest())
             document.metadata["userId"] = email
+            document.metadata["type"] = "file"
             if "page" in document.metadata:
                 ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
             else:
