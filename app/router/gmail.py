@@ -10,7 +10,7 @@ from services import GmailService
 from schema import EmailFilter, EmailQuery, task_states
 from models.db import MongodbClient
 
-router = APIRouter(prefix="/gmail/service", tags=["service"])
+router = APIRouter(prefix="/service/gmail", tags=["service"])
 
 @router.post("/collect")
 def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
