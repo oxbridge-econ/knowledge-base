@@ -54,9 +54,9 @@ class EmailFilter(BaseModel):
         Raises:
             ValueError: If the 'before' date is not greater than the 'after' date.
         """
-        if after is None:
-            after = (datetime.now() - timedelta(days=6 * 30)).strftime("%Y/%m/%d")
-        if before:
+        # if after is None:
+        #     after = (datetime.now() - timedelta(days=6 * 30)).strftime("%Y/%m/%d")
+        if before and after:
             before_dt = datetime.strptime(before, "%Y/%m/%d")
             after_dt = datetime.strptime(after, "%Y/%m/%d")
             if before_dt <= after_dt:
