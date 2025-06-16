@@ -116,7 +116,7 @@ def get_query(email: str = Query(...)) -> JSONResponse:
     del result["_id"]
     return JSONResponse(content=result["query"] if "query" in result else {}, status_code=200)
 
-@router.get("/gmail")
+@router.get("")
 def valid(email: str = Query(...)) -> JSONResponse:
     """
     Handles the chat POST request.
