@@ -322,12 +322,15 @@ class GmailService():
                         if part['mimeType'] == 'text/plain':
                             email_data['content'] = base64.urlsafe_b64decode(
                                 part['body']['data']).decode('utf-8')
+                            email_data['mimeType'] = part['mimeType']
                             break
                         elif part['mimeType'] == 'text/html':
                             email_data['content'] = base64.urlsafe_b64decode(
                                 part['body']['data']).decode('utf-8')
+                            email_data['mimeType'] = part['mimeType']
                             break
                 elif 'data' in msg['payload']['body']:
+                    email_data['mimeType'] = msg['payload']['mimeType']
                     email_data['content'] = base64.urlsafe_b64decode(
                         msg['payload']['body']['data']).decode('utf-8')
                 email_list.append(email_data)
