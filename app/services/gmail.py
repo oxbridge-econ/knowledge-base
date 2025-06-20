@@ -142,13 +142,13 @@ class GmailService():
                     mime_types.append(part["mimeType"])
                     if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
                         body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                        body = re.sub(r"<[^>]+>", "", body)  # Remove HTML tags
+                        # body = re.sub(r"<[^>]+>", "", body)  # Remove HTML tags
                         metadata["mimeType"] = part["mimeType"]
                         metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
                     elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
                         body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                        body = re.sub(r"<[^>]+>", "", body)
+                        # body = re.sub(r"<[^>]+>", "", body)
                         metadata["mimeType"] = part["mimeType"]
                         metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
@@ -226,13 +226,13 @@ class GmailService():
                                             document.metadata["id"])
             elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
-                body = re.sub(r"<[^>]+>", "", body)
+                # body = re.sub(r"<[^>]+>", "", body)
                 metadata["mimeType"] = msg["payload"]["mimeType"]
                 metadata["id"] = msg_id
                 documents.append(Document(page_content=body, metadata=metadata))
             elif msg["payload"]["mimeType"] == "text/html" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
-                body = re.sub(r"<[^>]+>", "", body)
+                # body = re.sub(r"<[^>]+>", "", body)
                 metadata["mimeType"] = msg["payload"]["mimeType"]
                 metadata["id"] = msg_id
                 documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
