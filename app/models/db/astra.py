@@ -8,6 +8,12 @@ import astrapy
 import langchain_astradb
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_astradb import AstraDBVectorStore
+from controllers.utils import upsert_task
+from schema import task_states
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def token_length(text):
     """
@@ -41,7 +47,7 @@ class VectorStore(AstraDBVectorStore):
             api_endpoint=os.environ["ASTRA_DB_API_ENDPOINT"],
             autodetect_collection=True)
 
-    def add_documents_with_retry(self, chunks, ids, max_retries=3):
+    def add_documents_with_retry(self, chunks, ids, email, task, max_retries=3):
         """
         Attempts to add documents to the vstore with a specified number of retries.
 
@@ -56,7 +62,9 @@ class VectorStore(AstraDBVectorStore):
         for attempt in range(max_retries):
             try:
                 self.add_documents(chunks, ids=ids)
-                return {"status": "Succeeded"}
+                task["status"] = "Succeeded"
+                upsert_task(email, task)
+                task_states[task["id"]] = task["status"]
             except (ConnectionError, TimeoutError, astrapy.exceptions.data_api_exceptions.DataAPIResponseException,
                     langchain_astradb.vectorstores.AstraDBVectorStoreError) as e:
                 for chunk in chunks:
@@ -68,9 +76,11 @@ class VectorStore(AstraDBVectorStore):
                 else:
                     logger.error("Max retries reached. Operation failed.")
                     logger.error(ids)
-                    return {"status": "Failed"}
-    
-    def upload(self, documents):
+                    task["status"] = "Failed"
+                    upsert_task(email, task)
+                    task_states[task["id"]] = task["status"]
+
+    def upload(self, email, documents, task):
         """
         Splits the provided documents into smaller chunks using a text splitter and uploads them to the vector store.
 
@@ -101,8 +111,9 @@ class VectorStore(AstraDBVectorStore):
             for index, chunk in enumerate(chunks):
                 _id = f"{chunk.metadata['id']}-{str(index)}"
                 ids.append(_id)
-            result = self.add_documents_with_retry(chunks, ids)
-            return result
+            self.add_documents_with_retry(chunks, ids, email, task)
         except ValueError as e:
             logger.error("Error adding documents to vectorstore: %s", e)
-            return {"status": "Failed"}
+            task["status"] = "Failed"
+            upsert_task(email, task)
+            task_states[task["id"]] = task["status"]

@@ -14,9 +14,10 @@ from pdf2image import convert_from_path
 from pydantic import BaseModel
 from pypdf import PdfReader
 
-from schema import task_states
 from models.llm import client
 from models.db import vstore
+from .utils import upsert_task
+from schema import task_states
 
 text_splitter = RecursiveCharacterTextSplitter()
 
@@ -101,7 +102,7 @@ def extract_text_from_image(image):
     )
     return json.loads(response.choices[0].message.content)["content"]
 
-def load_pdf(content: bytes, filename: str, email: str, task_id: str):
+def load_pdf(content: bytes, filename: str, email: str, task: dict):
     """
     Loads and processes PDF files from a specified directory.
 
@@ -134,7 +135,9 @@ def load_pdf(content: bytes, filename: str, email: str, task_id: str):
     with open(path, "wb") as f:
         f.write(content)
     try:
-        task_states[task_id] = "In Progress"
+        task["status"] = "In Progress"
+        upsert_task(email, task)
+        task_states[task["id"]] = task["status"]
         pdf = PdfReader(path)
         for page_num, page in enumerate(pdf.pages):
             contain = check_image(page)
@@ -149,12 +152,14 @@ def load_pdf(content: bytes, filename: str, email: str, task_id: str):
                 metadata={"source": filename, "page": page_num + 1})
             documents.append(doc)
         os.remove(path)
-        threading.Thread(target=upload, args=[documents, email, task_id]).start()
+        threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
-        task_states[task_id] = "Failed"
+        task["status"] = "Failed"
+        upsert_task(email, task)
+        task_states[task["id"]] = task["status"]
 
-def load_img(content: bytes, filename: str, email: str, task_id: str):
+def load_img(content: bytes, filename: str, email: str, task: dict):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
@@ -172,16 +177,20 @@ def load_img(content: bytes, filename: str, email: str, task_id: str):
         - Uploads the extracted documents using the upload function.
     """
     try:
-        task_states[task_id] = "In Progress"
+        task["status"] = "In Progress"
+        upsert_task(email, task)
+        task_states[task["id"]] = task["status"]
         documents = []
         text = extract_text_from_image(Image.open(BytesIO(content)))
         doc = Document(page_content=text, metadata={"source": filename})
         documents.append(doc)
-        threading.Thread(target=upload, args=[documents, email, task_id]).start()
+        threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
-        task_states[task_id] = "Failed"
+        task["status"] = "Failed"
+        upsert_task(email, task)
+        task_states[task["id"]] = task["status"]
 
-def load_docx(content: bytes, filename: str, email: str, task_id: str):
+def load_docx(content: bytes, filename: str, email: str, task: dict):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
@@ -200,17 +209,21 @@ def load_docx(content: bytes, filename: str, email: str, task_id: str):
     """
     path = os.path.join("/tmp", filename)
     try:
-        task_states[task_id] = "In Progress"
+        task["status"] = "In Progress"
+        upsert_task(email, task)
+        task_states[task["id"]] = task["status"]
         with open(path, "wb") as f:
             f.write(content)
         documents = Docx2txtLoader(file_path=path).load()
         os.remove(path)
-        threading.Thread(target=upload, args=[documents, email, task_id]).start()
+        threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
-        task_states[task_id] = "Failed"
+        task["status"] = "Failed"
+        upsert_task(email, task)
+        task_states[task["id"]] = task["status"]
 
-def upload(docs: list[Document], email: str, task_id: str):
+def upload(docs: list[Document], email: str, task: dict):
     """
     Processes a list of documents, splits them into smaller chunks, updates their metadata,
     generates unique IDs for each chunk, and adds them to a vector store.
@@ -218,7 +231,7 @@ def upload(docs: list[Document], email: str, task_id: str):
     Args:
         docs (list): A list of document objects to be processed.
         email (str): The email address of the user, used for metadata.
-        task_id (str): The unique identifier for the task.
+        task (dict): The task dictionary containing task information.
 
     Metadata Processing:
         - Extracts and updates the "page" metadata if "page_label" exists.
@@ -258,5 +271,4 @@ def upload(docs: list[Document], email: str, task_id: str):
             else:
                 ids.append(f"{document.metadata['id']}-{index}")
             documents.append(document)
-    result = vstore.add_documents_with_retry(documents, ids)
-    task_states[task_id] = result['status']
+    vstore.add_documents_with_retry(documents, ids, email, task)

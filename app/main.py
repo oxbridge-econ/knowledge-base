@@ -1,7 +1,7 @@
 """Module to handle the main FastAPI application and its endpoints."""
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from schema import task_states
 from router import gmail, file, extract
@@ -51,3 +51,8 @@ async def get_status(task_id: str):
     """
     status = task_states.get(task_id, "NOT_FOUND")
     return {"task_id": task_id, "status": status}
+
+@app.get("/tasks")
+async def get_tasks(email: str = Query(...)):
+    tasks = [task for task in task_states if task_states[task]["email"] == email]
+    return {"tasks": tasks}

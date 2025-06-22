@@ -4,7 +4,6 @@ This module provides a utility class, `GmailService`, for interacting with the G
 import base64
 import hashlib
 import os
-import re
 from venv import logger
 
 from datetime import datetime, timezone, timedelta
@@ -20,6 +19,7 @@ from langchain_core.documents import Document
 from schema import task_states
 from models.db import vstore
 from controllers.topic import detector
+from controllers.utils import upsert_task
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -93,7 +93,7 @@ class GmailService():
             query_parts.append(f'-"{params["not_has_words"]}"')
         return ' '.join(query_parts)
 
-    def collect(self, query, task_id):
+    def collect(self, query, email, task):
         """
         Main function to search and list emails from Gmail.
 
@@ -105,8 +105,7 @@ class GmailService():
             None
         """
         documents = []
-        task_states[task_id] = "In Progress"
-        for message in self.search(query, max_results=500, check_next_page=True):
+        for message in self.search(query, max_results=1, check_next_page=True):
             msg = self.service.users().messages().get(
                 userId="me", id=message["id"], format="full").execute()
             metadata = {}
@@ -238,42 +237,83 @@ class GmailService():
                 documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
             if "multipart/alternative" in mime_types and len(mime_types) == 1:
                 logger.info("Only multipart/alternative found in the email.")
+                task['status'] = "Failed"
+                upsert_task(email, task)
             else:
-                result = vstore.upload(documents)
-                task_states[task_id] = result['status']
+                task['status'] = "In Progress"
+                upsert_task(email, task)
+                task_states[task["id"]] = task["status"]
+                vstore.upload(email, documents, task)
 
+    # def search(self, query, max_results=500, check_next_page=False) -> list:
+    #     """
+    #     Searches for Gmail messages based on a query string.
 
+    #     Args:
+    #         query (str): The search query string to filter messages.
+    #         max_results (int, optional): The maximum number of results to retrieve per page.
+    #         check_next_page (bool, optional): if to fetch additional pages of results if available.
+
+    #     Returns:
+    #         list: A list of message metadata dict. Each dictionary contains info about a message.
+
+    #     Notes:
+    #         - The `query` parameter supports Gmail's advanced search operators.
+    #         - If `check_next_page` is True, will continue fetching messages until all are retrieved.
+    #     """
+    #     query = self.parse_query(query)
+    #     result = self.service.users().messages().list(
+    #         userId='me', q=query, maxResults=max_results).execute()
+    #     messages = []
+    #     if "messages" in result:
+    #         messages.extend(result["messages"])
+    #     while "nextPageToken" in result and check_next_page:
+    #         page_token = result["nextPageToken"]
+    #         result = (
+    #             self.service.users().messages().list(
+    #                 userId="me", q=query, maxResults=max_results, pageToken=page_token).execute()
+    #         )
+    #         if "messages" in result:
+    #             messages.extend(result["messages"])
+    #     return messages
 
     def search(self, query, max_results=500, check_next_page=False) -> list:
         """
-        Searches for Gmail messages based on a query string.
+        Searches for Gmail threads based on a query string and returns the latest message from each thread.
 
         Args:
-            query (str): The search query string to filter messages.
-            max_results (int, optional): The maximum number of results to retrieve per page.
-            check_next_page (bool, optional): if to fetch additional pages of results if available.
+            query (str): The search query string to filter threads.
+            max_results (int, optional): The maximum number of threads to retrieve per page.
+            check_next_page (bool, optional): Whether to fetch additional pages of results if available.
 
         Returns:
-            list: A list of message metadata dict. Each dictionary contains info about a message.
+            list: A list of message metadata dicts, each representing the latest message in a thread.
 
         Notes:
             - The `query` parameter supports Gmail's advanced search operators.
-            - If `check_next_page` is True, will continue fetching messages until all are retrieved.
+            - If `check_next_page` is True, will continue fetching threads until all are retrieved.
+            - Only the most recent message from each thread is included in the results.
         """
         query = self.parse_query(query)
-        result = self.service.users().messages().list(
+        result = self.service.users().threads().list(
             userId='me', q=query, maxResults=max_results).execute()
-        messages = []
-        if "messages" in result:
-            messages.extend(result["messages"])
+        threads = []
+        if "threads" in result:
+            threads.extend(result["threads"])
         while "nextPageToken" in result and check_next_page:
             page_token = result["nextPageToken"]
             result = (
-                self.service.users().messages().list(
+                self.service.users().threads().list(
                     userId="me", q=query, maxResults=max_results, pageToken=page_token).execute()
             )
-            if "messages" in result:
-                messages.extend(result["messages"])
+            if "threads" in result:
+                threads.extend(result["threads"])
+        messages = []
+        for thread in threads:
+            thread_data = self.service.users().threads().get(userId='me', id=thread['id']).execute()
+            if thread_data.get('messages'):
+                latest_message = thread_data['messages'][-1]
+                messages.append(latest_message)
         return messages
 
     def preview(self, query) -> list:
