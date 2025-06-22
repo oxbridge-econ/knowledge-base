@@ -17,7 +17,7 @@ from langchain_community.document_loaders import (
 )
 from langchain_core.documents import Document
 from schema import task_states
-from models.db import vstore
+from models.db import vstore, astra_collection
 from controllers.topic import detector
 from controllers.utils import upsert_task
 
@@ -105,13 +105,21 @@ class GmailService():
             None
         """
         documents = []
-        for message in self.search(query, max_results=1, check_next_page=True):
+        for message in self.search(query, max_results=500, check_next_page=True):
             msg = self.service.users().messages().get(
                 userId="me", id=message["id"], format="full").execute()
             metadata = {}
             metadata["threadId"] = msg["threadId"]
             metadata["msgId"] = msg["id"]
             metadata["type"] = "gmail"
+            result = astra_collection.delete_many({
+                "$and": [
+                    {"metadata.threadId": msg["threadId"]},
+                    {"metadata.type": "gmail"},
+                    {"metadata.userId": email}
+                ]
+            })
+            logger.info("Deleted %d documents from AstraDB for threadId: %s", result.deleted_count, msg["threadId"])
             msg_id = f"{msg['threadId']}-{msg['id']}"
             for header in msg["payload"]["headers"]:
                 if header["name"] == "From":
@@ -162,7 +170,7 @@ class GmailService():
                             .execute()
                         )
                         file_data = base64.urlsafe_b64decode(attachment["data"].encode("UTF-8"))
-                        path = os.path.join(".", ATTACHMENTS_DIR, part["filename"])
+                        path = os.path.join(".", ATTACHMENTS_DIR, f"{msg['id']}_{part['filename']}")
                         with open(path, "wb") as f:
                             f.write(file_data)
                         if part["mimeType"] == "application/pdf":

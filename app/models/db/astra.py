@@ -11,9 +11,9 @@ from langchain_astradb import AstraDBVectorStore
 from controllers.utils import upsert_task
 from schema import task_states
 
-from dotenv import load_dotenv
-
-load_dotenv()
+astra_collection = astrapy.DataAPIClient(
+    os.environ["ASTRA_DB_APPLICATION_TOKEN"]).get_database(
+        os.environ["ASTRA_DB_API_ENDPOINT"]).documents
 
 def token_length(text):
     """
