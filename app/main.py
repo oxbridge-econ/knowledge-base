@@ -3,8 +3,10 @@ import logging
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from schema import task_states
 from router import gmail, file, extract
+from models.db import MongodbClient
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
@@ -52,7 +54,27 @@ async def get_status(task_id: str):
     status = task_states.get(task_id, "NOT_FOUND")
     return {"task_id": task_id, "status": status}
 
-@app.get("/tasks")
-async def get_tasks(email: str = Query(...)):
-    tasks = [task for task in task_states if task_states[task]["email"] == email]
-    return {"tasks": tasks}
+@app.get("/tasks/{task_type}")
+async def get_tasks(task_type: str, email: str = Query(...)) -> JSONResponse:
+    """
+    Retrieve tasks of a specific type for a given user email.
+
+    Args:
+        task_type (str): The type of tasks to retrieve (e.g., 'todo', 'inprogress', etc.).
+        email (str): The email address of the user whose tasks are to be fetched. This is expected as a query parameter.
+
+    Returns:
+        dict: A dictionary containing the list of tasks associated with the provided email and task type.
+
+    Raises:
+        HTTPException: If the query parameters are invalid or if there is an error accessing the database.
+
+    Note:
+        The function assumes that `MongodbClient` is a properly initialized MongoDB client and that the relevant collections exist.
+    """
+    tasks = MongodbClient["task"][task_type].find_one({"_id": email})
+    if tasks:
+        del tasks["_id"]
+    else:
+        tasks = []
+    return JSONResponse(content=tasks, status_code=200)

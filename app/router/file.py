@@ -4,7 +4,7 @@ from pathlib import Path
 import threading
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from fastapi.responses import JSONResponse
-from controllers.utils import upsert_task
+from controllers.utils import upsert
 from controllers.loader import load_docx, load_pdf, load_img
 from schema import task_states
 
@@ -30,13 +30,18 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
         str: The generated response from the chat function.
     """
     content = await file.read()
-    task_id = f"{str(uuid.uuid4())}"
-    task = {"id": task_id, "status": "Pending"}
+    task = {
+        "id": f"{str(uuid.uuid4())}",
+        "status": "Pending",
+        "type": "Manual"
+    }
     task_states[task["id"]] = task["status"]
-    upsert_task(email, task)
+    upsert(email, task)
     if file.content_type not in ALLOWED_FILE_TYPES \
         or Path(file.filename).suffix.lower() != ALLOWED_FILE_TYPES.get(file.content_type):
         task["status"] = "Failed"
+        task_states[task["id"]] = task["status"]
+        upsert(email, task)
         raise HTTPException(
             status_code=400,
             detail="Invalid file type. Only PDF, TXT, and DOCX are allowed."

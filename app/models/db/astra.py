@@ -8,8 +8,8 @@ import astrapy
 import langchain_astradb
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_astradb import AstraDBVectorStore
-from controllers.utils import upsert_task
 from schema import task_states
+from controllers.utils import upsert
 
 astra_collection = astrapy.DataAPIClient(
     os.environ["ASTRA_DB_APPLICATION_TOKEN"]).get_database(
@@ -57,15 +57,16 @@ class VectorStore(AstraDBVectorStore):
         max_retries (int, optional): The maximum number of retry attempts. Default is 3.
 
         Raises:
-        Exception: If the operation fails after the maximum number of retries, the exception is logged.
+        Exception: If the operation fails after the maximum number of retries, log exception.
         """
         for attempt in range(max_retries):
             try:
                 self.add_documents(chunks, ids=ids)
                 task["status"] = "Succeeded"
-                upsert_task(email, task)
+                upsert(email, task)
                 task_states[task["id"]] = task["status"]
-            except (ConnectionError, TimeoutError, astrapy.exceptions.data_api_exceptions.DataAPIResponseException,
+            except (ConnectionError, TimeoutError,
+                    astrapy.exceptions.data_api_exceptions.DataAPIResponseException,
                     langchain_astradb.vectorstores.AstraDBVectorStoreError) as e:
                 for chunk in chunks:
                     url_pattern = r'https?://[^\s]+'
@@ -77,19 +78,20 @@ class VectorStore(AstraDBVectorStore):
                     logger.error("Max retries reached. Operation failed.")
                     logger.error(ids)
                     task["status"] = "Failed"
-                    upsert_task(email, task)
+                    upsert(email, task)
                     task_states[task["id"]] = task["status"]
 
     def upload(self, email, documents, task):
         """
-        Splits the provided documents into smaller chunks using a text splitter and uploads them to the vector store.
+        Splits the provided documents into smaller chunks using a text splitter
+        and uploads them to the vector store.
 
         Args:
             documents (List[Document]): A list of Document objects to be uploaded.
 
         Process:
             - Splits each document into chunks based on specified chunk size and overlap.
-            - Generates unique IDs for each chunk by combining the original document ID and chunk index.
+            - Generates unique IDs for each chunk by combining document ID and chunk index.
             - Uploads the chunks to the vector store with retry logic.
 
         Raises:
@@ -115,5 +117,5 @@ class VectorStore(AstraDBVectorStore):
         except ValueError as e:
             logger.error("Error adding documents to vectorstore: %s", e)
             task["status"] = "Failed"
-            upsert_task(email, task)
+            upsert(email, task)
             task_states[task["id"]] = task["status"]

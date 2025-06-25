@@ -23,6 +23,7 @@ class EmailFilter(BaseModel):
         after (Optional[str]): The date after which to search for emails.
         max_results (Optional[int]): The maximum number of results to return.
     """
+    id: Optional[str] = None
     subject: Optional[str] = None
     from_email: Optional[str] = Field(None, alias="from")
     to_email: Optional[str] = Field(None, alias="to")
@@ -147,3 +148,16 @@ class ChatSession(BaseModel):
         user_id (str): The unique identifier for the user.
     """
     user_id: str
+
+class DocsReq(BaseModel):
+    """
+    Request schema for document retrieval operations.
+
+    Attributes:
+        limit (Optional[int]): Maximum number of results to return.
+            Defaults to 10.
+        skip (Optional[int]): Number of results to skip for pagination.
+            Defaults to 0.
+    """
+    limit: Optional[int] = 10
+    skip: Optional[int] = 0

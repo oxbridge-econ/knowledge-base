@@ -4,9 +4,12 @@ This module provides a utility class, `GmailService`, for interacting with the G
 import base64
 import hashlib
 import os
+import uuid
+import threading
 from venv import logger
 
 from datetime import datetime, timezone, timedelta
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from ics import Calendar
 from langchain_community.document_loaders import (
@@ -17,9 +20,11 @@ from langchain_community.document_loaders import (
 )
 from langchain_core.documents import Document
 from schema import task_states
-from models.db import vstore, astra_collection
+from models.db import vstore, astra_collection, MongodbClient
+from controllers.utils import upsert
 from controllers.topic import detector
-from controllers.utils import upsert_task
+
+collection = MongodbClient["service"]["gmail"]
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -45,7 +50,7 @@ class GmailService():
         service:
             An authenticated Gmail API service instance used to interact with the Gmail API.
     """
-    def __init__(self, credentials):
+    def __init__(self, credentials, email: str = None, task: str = None):
         """
         Initializes the Gmail controller with the provided email address.
 
@@ -54,6 +59,10 @@ class GmailService():
             The email address used to create credentials for accessing the Gmail API.
         """
         self.service = build("gmail", "v1", credentials=credentials)
+        if email and task:
+            self.task = task
+            self.email = email
+            upsert(self.email, self.task)
 
     def parse_query(self, params) -> str:
         """
@@ -93,7 +102,7 @@ class GmailService():
             query_parts.append(f'-"{params["not_has_words"]}"')
         return ' '.join(query_parts)
 
-    def collect(self, query, email, task):
+    def collect(self, query):
         """
         Main function to search and list emails from Gmail.
 
@@ -116,10 +125,11 @@ class GmailService():
                 "$and": [
                     {"metadata.threadId": msg["threadId"]},
                     {"metadata.type": "gmail"},
-                    {"metadata.userId": email}
+                    {"metadata.userId": self.email}
                 ]
             })
-            logger.info("Deleted %d documents from AstraDB for threadId: %s", result.deleted_count, msg["threadId"])
+            logger.info("Deleted %d documents from AstraDB for threadId: %s",
+                        result.deleted_count, msg["threadId"])
             msg_id = f"{msg['threadId']}-{msg['id']}"
             for header in msg["payload"]["headers"]:
                 if header["name"] == "From":
@@ -245,45 +255,14 @@ class GmailService():
                 documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
             if "multipart/alternative" in mime_types and len(mime_types) == 1:
                 logger.info("Only multipart/alternative found in the email.")
-                task['status'] = "Failed"
-                upsert_task(email, task)
+                self.task['status'] = "Failed"
+                task_states[self.task["id"]] = self.task["status"]
+                upsert(self.email, self.task)
             else:
-                task['status'] = "In Progress"
-                upsert_task(email, task)
-                task_states[task["id"]] = task["status"]
-                vstore.upload(email, documents, task)
-
-    # def search(self, query, max_results=500, check_next_page=False) -> list:
-    #     """
-    #     Searches for Gmail messages based on a query string.
-
-    #     Args:
-    #         query (str): The search query string to filter messages.
-    #         max_results (int, optional): The maximum number of results to retrieve per page.
-    #         check_next_page (bool, optional): if to fetch additional pages of results if available.
-
-    #     Returns:
-    #         list: A list of message metadata dict. Each dictionary contains info about a message.
-
-    #     Notes:
-    #         - The `query` parameter supports Gmail's advanced search operators.
-    #         - If `check_next_page` is True, will continue fetching messages until all are retrieved.
-    #     """
-    #     query = self.parse_query(query)
-    #     result = self.service.users().messages().list(
-    #         userId='me', q=query, maxResults=max_results).execute()
-    #     messages = []
-    #     if "messages" in result:
-    #         messages.extend(result["messages"])
-    #     while "nextPageToken" in result and check_next_page:
-    #         page_token = result["nextPageToken"]
-    #         result = (
-    #             self.service.users().messages().list(
-    #                 userId="me", q=query, maxResults=max_results, pageToken=page_token).execute()
-    #         )
-    #         if "messages" in result:
-    #             messages.extend(result["messages"])
-    #     return messages
+                self.task['status'] = "In Progress"
+                upsert(self.email, self.task)
+                task_states[self.task["id"]] = self.task["status"]
+                vstore.upload(self.email, documents, self.task)
 
     def search(self, query, max_results=500, check_next_page=False) -> list:
         """
@@ -295,7 +274,8 @@ class GmailService():
             check_next_page (bool, optional): Whether to fetch additional pages of results if available.
 
         Returns:
-            list: A list of message metadata dicts, each representing the latest message in a thread.
+            list: A list of message metadata dicts,
+            each representing the latest message in a thread.
 
         Notes:
             - The `query` parameter supports Gmail's advanced search operators.
@@ -324,66 +304,147 @@ class GmailService():
                 messages.append(latest_message)
         return messages
 
-    def preview(self, query) -> list:
+    def preview(self, query = None, messages: list[dict] = None) -> list:
         """
-        Retrieve a list of emails with subject, to, from, cc, and content.
-        
+        Retrieves a preview list of emails matching the given query.
+
         Args:
-            mailservice: Authenticated Gmail API service instance
-            max_results: Maximum number of emails to retrieve
-        
+            query (str): The search query to filter emails.
+
         Returns:
-            List of dictionaries containing email details
+            list: A list of email previews matching the query. Returns an empty list if no messages are found or if an error occurs.
+
+        Raises:
+            Logs exceptions of type KeyError, ValueError, or TypeError and returns an empty list.
         """
         try:
-            messages = self.search(query, max_results=10)
-            email_list = []
+            if query is not None:
+                messages = self.search(query, max_results=10)
+            emails = []
             if not messages:
-                return email_list
-            for message in messages:
-                msg = self.service.users().messages().get(
-                    userId='me', id=message['id'], format='full').execute()
-                headers = msg['payload']['headers']
-                utc_dt = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
-                hkt_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
-                email_data = {
-                    'subject': '',
-                    'from': '',
-                    'to': '',
-                    'cc': '',
-                    'content': '',
-                    'snippet': msg['snippet'] if 'snippet' in msg else '',
-                    "datetime": hkt_dt.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                for header in headers:
-                    name = header['name'].lower()
-                    if name == 'subject':
-                        email_data['subject'] = header['value']
-                    elif name == 'from':
-                        email_data['from'] = header['value']
-                    elif name == 'to':
-                        email_data['to'] = header['value']
-                    elif name == 'cc':
-                        email_data['cc'] = header['value']
-                if 'parts' in msg['payload']:
-                    for part in msg['payload']['parts']:
-                        if part['mimeType'] == 'text/plain':
-                            email_data['content'] = base64.urlsafe_b64decode(
-                                part['body']['data']).decode('utf-8')
-                            email_data['mimeType'] = part['mimeType']
-                            break
-                        elif part['mimeType'] == 'text/html':
-                            email_data['content'] = base64.urlsafe_b64decode(
-                                part['body']['data']).decode('utf-8')
-                            email_data['mimeType'] = part['mimeType']
-                            break
-                elif 'data' in msg['payload']['body']:
-                    email_data['mimeType'] = msg['payload']['mimeType']
-                    email_data['content'] = base64.urlsafe_b64decode(
-                        msg['payload']['body']['data']).decode('utf-8')
-                email_list.append(email_data)
-            return email_list
+                return emails
+            emails = self._get_email_by_messages(messages)
+            return emails
 
         except (KeyError, ValueError, TypeError) as e:
             logger.info("An error occurred: %s", e)
             return []
+
+    def _get_email_by_messages(self, messages: list[dict]) -> dict:
+        """
+        Fetches and parses email messages from the Gmail API, extracting key fields and decoding content.
+
+        Args:
+            messages (list[dict]): A list of message metadata dictionaries, each containing at least an 'id' key.
+
+        Returns:
+            dict: A list of dictionaries, each representing an email with the following fields:
+                - subject (str): The subject of the email.
+                - from (str): The sender's email address.
+                - to (str): The recipient's email address.
+                - cc (str): The CC'd email addresses, if any.
+                - content (str): The decoded email body, either plain text or HTML.
+                - snippet (str): A short snippet of the email content.
+                - datetime (str): The email's sent date and time in "YYYY-MM-DD HH:MM:SS" format (HKT timezone).
+                - mimeType (str, optional): The MIME type of the email content.
+
+        Notes:
+            - The function converts the email's internal date to Hong Kong Time (UTC+8).
+            - If both plain text and HTML parts are present, plain text is preferred.
+            - Assumes the Gmail API service is available as self.service.
+        """
+        emails = []
+        for message in messages:
+            msg = self.service.users().messages().get(
+                    userId='me', id=message['id'], format='full').execute()
+            headers = msg['payload']['headers']
+            utc_dt = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
+            hkt_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
+            email = {
+                'subject': '',
+                'from': '',
+                'to': '',
+                'cc': '',
+                'content': '',
+                'snippet': msg['snippet'] if 'snippet' in msg else '',
+                "datetime": hkt_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            for header in headers:
+                name = header['name'].lower()
+                if name == 'subject':
+                    email['subject'] = header['value']
+                elif name == 'from':
+                    email['from'] = header['value']
+                elif name == 'to':
+                    email['to'] = header['value']
+                elif name == 'cc':
+                    email['cc'] = header['value']
+            if 'parts' in msg['payload']:
+                for part in msg['payload']['parts']:
+                    if part['mimeType'] == 'text/plain':
+                        email['content'] = base64.urlsafe_b64decode(
+                            part['body']['data']).decode('utf-8')
+                        email['mimeType'] = part['mimeType']
+                        break
+                    elif part['mimeType'] == 'text/html':
+                        email['content'] = base64.urlsafe_b64decode(
+                            part['body']['data']).decode('utf-8')
+                        email['mimeType'] = part['mimeType']
+                        break
+            elif 'data' in msg['payload']['body']:
+                email['mimeType'] = msg['payload']['mimeType']
+                email['content'] = base64.urlsafe_b64decode(
+                    msg['payload']['body']['data']).decode('utf-8')
+            emails.append(email)
+        return emails
+
+def trigger():
+    """
+    Collects Gmail data for a specified user and initiates an asynchronous collection task.
+
+    Args:
+        body (EmailQuery): The query parameters for the email collection.
+        email (str, optional): The user's email address, provided as a query parameter.
+
+    Returns:
+        JSONResponse:
+            - If the user is not found, returns a 404 error with an appropriate message.
+            - If the user's credentials are invalid or expired, returns a 401 error.
+            - Otherwise, starts a background thread to collect emails,
+              updates the user's query in the database,
+              and returns a JSON response containing the task ID and its initial status.
+
+    Raises:
+        None
+
+    Side Effects:
+        - Starts a background thread for email collection.
+        - Updates or inserts the user's query parameters in the MongoDB collection.
+        - Modifies the global `task_states` dictionary with the new task's status.
+    """
+    records = collection.find(projection={"token": 1, "refresh_token": 1, "queries": 1})
+    if not records:
+        logger.error("User not found.")
+    for record in records:
+        credentials = Credentials(
+            token=record["token"],
+            refresh_token=record["refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=os.environ.get("CLIENT_ID"),
+            client_secret=os.environ.get("CLIENT_SECRET"),
+            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        )
+        if not credentials.valid or credentials.expired:
+            logger.error("Invalid or expired credentials for user: %s", record["_id"])
+        service = GmailService(credentials, email=record["_id"])
+        body = record.model_dump()
+        body["filter"] = {k: v for k, v in body["filter"].items() if v is not None}
+        if "queries" not in body:
+            for query in record["queries"]:
+                task_id = f"{str(uuid.uuid4())}"
+                service.task = {
+                    "id": task_id,
+                    "status": "Pending",
+                    "type": "CronJob"
+                }
+                threading.Thread(target=service.collect, args=[query]).start()

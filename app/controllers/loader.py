@@ -16,8 +16,9 @@ from pypdf import PdfReader
 
 from models.llm import client
 from models.db import vstore
-from .utils import upsert_task
+from controllers.utils import upsert
 from schema import task_states
+
 
 text_splitter = RecursiveCharacterTextSplitter()
 
@@ -136,7 +137,7 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
         f.write(content)
     try:
         task["status"] = "In Progress"
-        upsert_task(email, task)
+        upsert(email, task)
         task_states[task["id"]] = task["status"]
         pdf = PdfReader(path)
         for page_num, page in enumerate(pdf.pages):
@@ -156,7 +157,7 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
         task["status"] = "Failed"
-        upsert_task(email, task)
+        upsert(email, task)
         task_states[task["id"]] = task["status"]
 
 def load_img(content: bytes, filename: str, email: str, task: dict):
@@ -178,7 +179,7 @@ def load_img(content: bytes, filename: str, email: str, task: dict):
     """
     try:
         task["status"] = "In Progress"
-        upsert_task(email, task)
+        upsert(email, task)
         task_states[task["id"]] = task["status"]
         documents = []
         text = extract_text_from_image(Image.open(BytesIO(content)))
@@ -187,7 +188,7 @@ def load_img(content: bytes, filename: str, email: str, task: dict):
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
         task["status"] = "Failed"
-        upsert_task(email, task)
+        upsert(email, task)
         task_states[task["id"]] = task["status"]
 
 def load_docx(content: bytes, filename: str, email: str, task: dict):
@@ -210,7 +211,7 @@ def load_docx(content: bytes, filename: str, email: str, task: dict):
     path = os.path.join("/tmp", filename)
     try:
         task["status"] = "In Progress"
-        upsert_task(email, task)
+        upsert(email, task)
         task_states[task["id"]] = task["status"]
         with open(path, "wb") as f:
             f.write(content)
@@ -220,7 +221,7 @@ def load_docx(content: bytes, filename: str, email: str, task: dict):
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
         task["status"] = "Failed"
-        upsert_task(email, task)
+        upsert(email, task)
         task_states[task["id"]] = task["status"]
 
 def upload(docs: list[Document], email: str, task: dict):
