@@ -5,6 +5,7 @@ import json
 import os
 from io import BytesIO
 import threading
+from datetime import datetime
 
 from PIL import Image
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -136,9 +137,10 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
     with open(path, "wb") as f:
         f.write(content)
     try:
-        task["status"] = "In Progress"
+        task["status"] = "in progress"
+        task["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
         upsert(email, task)
-        task_states[task["id"]] = task["status"]
+        task_states[task["id"]] = "In Progress"
         pdf = PdfReader(path)
         for page_num, page in enumerate(pdf.pages):
             contain = check_image(page)
@@ -156,9 +158,9 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
-        task["status"] = "Failed"
+        task["status"] = "failed"
         upsert(email, task)
-        task_states[task["id"]] = task["status"]
+        task_states[task["id"]] = "Failed"
 
 def load_img(content: bytes, filename: str, email: str, task: dict):
     """
@@ -178,18 +180,18 @@ def load_img(content: bytes, filename: str, email: str, task: dict):
         - Uploads the extracted documents using the upload function.
     """
     try:
-        task["status"] = "In Progress"
+        task["status"] = "in progress"
         upsert(email, task)
-        task_states[task["id"]] = task["status"]
+        task_states[task["id"]] = "In Progress"
         documents = []
         text = extract_text_from_image(Image.open(BytesIO(content)))
         doc = Document(page_content=text, metadata={"source": filename})
         documents.append(doc)
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
-        task["status"] = "Failed"
+        task["status"] = "failed"
         upsert(email, task)
-        task_states[task["id"]] = task["status"]
+        task_states[task["id"]] = "Failed"
 
 def load_docx(content: bytes, filename: str, email: str, task: dict):
     """
@@ -210,9 +212,9 @@ def load_docx(content: bytes, filename: str, email: str, task: dict):
     """
     path = os.path.join("/tmp", filename)
     try:
-        task["status"] = "In Progress"
+        task["status"] = "in progress"
         upsert(email, task)
-        task_states[task["id"]] = task["status"]
+        task_states[task["id"]] = "In Progress"
         with open(path, "wb") as f:
             f.write(content)
         documents = Docx2txtLoader(file_path=path).load()
@@ -220,9 +222,9 @@ def load_docx(content: bytes, filename: str, email: str, task: dict):
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
-        task["status"] = "Failed"
+        task["status"] = "failed"
         upsert(email, task)
-        task_states[task["id"]] = task["status"]
+        task_states[task["id"]] = "Failed"
 
 def upload(docs: list[Document], email: str, task: dict):
     """

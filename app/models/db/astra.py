@@ -62,9 +62,9 @@ class VectorStore(AstraDBVectorStore):
         for attempt in range(max_retries):
             try:
                 self.add_documents(chunks, ids=ids)
-                task["status"] = "Succeeded"
+                task["status"] = "succeeded"
                 upsert(email, task)
-                task_states[task["id"]] = task["status"]
+                task_states[task["id"]] = "Succeeded"
             except (ConnectionError, TimeoutError,
                     astrapy.exceptions.data_api_exceptions.DataAPIResponseException,
                     langchain_astradb.vectorstores.AstraDBVectorStoreError) as e:
@@ -77,9 +77,9 @@ class VectorStore(AstraDBVectorStore):
                 else:
                     logger.error("Max retries reached. Operation failed.")
                     logger.error(ids)
-                    task["status"] = "Failed"
+                    task["status"] = "failed"
                     upsert(email, task)
-                    task_states[task["id"]] = task["status"]
+                    task_states[task["id"]] = "Failed"
 
     def upload(self, email, documents, task):
         """
@@ -116,6 +116,6 @@ class VectorStore(AstraDBVectorStore):
             self.add_documents_with_retry(chunks, ids, email, task)
         except ValueError as e:
             logger.error("Error adding documents to vectorstore: %s", e)
-            task["status"] = "Failed"
+            task["status"] = "failed"
             upsert(email, task)
-            task_states[task["id"]] = task["status"]
+            task_states[task["id"]] = "Failed"

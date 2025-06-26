@@ -61,16 +61,20 @@ async def get_tasks(task_type: str, email: str = Query(...)) -> JSONResponse:
 
     Args:
         task_type (str): The type of tasks to retrieve (e.g., 'todo', 'inprogress', etc.).
-        email (str): The email address of the user whose tasks are to be fetched. This is expected as a query parameter.
+        email (str): The email address of the user whose tasks are to be fetched.
+            This is expected as a query parameter.
 
     Returns:
-        dict: A dictionary containing the list of tasks associated with the provided email and task type.
+        dict: A dictionary containing the list of tasks associated
+            with the provided email and task type.
 
     Raises:
-        HTTPException: If the query parameters are invalid or if there is an error accessing the database.
+        HTTPException: If the query parameters are invalid
+            or if there is an error accessing the database.
 
     Note:
-        The function assumes that `MongodbClient` is a properly initialized MongoDB client and that the relevant collections exist.
+        The function assumes that `MongodbClient` is a properly initialized MongoDB client
+        and that the relevant collections exist.
     """
     tasks = MongodbClient["task"][task_type].find_one({"_id": email})
     if tasks:

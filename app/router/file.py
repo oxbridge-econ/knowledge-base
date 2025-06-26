@@ -32,15 +32,15 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
     content = await file.read()
     task = {
         "id": f"{str(uuid.uuid4())}",
-        "status": "Pending",
-        "type": "Manual"
+        "status": "pending",
+        "type": "manual"
     }
-    task_states[task["id"]] = task["status"]
+    task_states[task["id"]] = "Pending"
     upsert(email, task)
     if file.content_type not in ALLOWED_FILE_TYPES \
         or Path(file.filename).suffix.lower() != ALLOWED_FILE_TYPES.get(file.content_type):
-        task["status"] = "Failed"
-        task_states[task["id"]] = task["status"]
+        task["status"] = "failed"
+        task_states[task["id"]] = "Failed"
         upsert(email, task)
         raise HTTPException(
             status_code=400,

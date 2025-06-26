@@ -1,4 +1,5 @@
 """Module for utility functions related to MongoDB operations."""
+from datetime import datetime
 from models.db import MongodbClient
 
 def upsert(
@@ -11,24 +12,36 @@ def upsert(
     field="tasks"
 ):
     """
-    Inserts or updates an element in a nested array field of a MongoDB document.
+    Inserts or updates an element within a specified collection and field in a MongoDB database.
 
-    If an element with the same 'id' exists in the array field, it updates the element's fields.
-    If not, it appends the new element to the array, maintaining a maximum array size.
+    If an element with the same 'id' exists in the specified field array,
+    updates its fields (except 'id').
+    If not, appends the element to the array, maintaining a maximum size.
 
     Args:
-        _id: The unique identifier of the MongoDB document.
+        _id: The unique identifier of the parent document.
         element (dict): The element to insert or update. Must contain an 'id' key.
-        db (str, optional): The database name. Defaults to "tasks".
-        service (str, optional): The collection name within the database. Defaults to "gmail".
-        size (int, optional): The maximum size of elements in the array field. Defaults to 10.
-        field (str, optional): The name of the array field within the document. Defaults to "tasks".
+        collection (Optional[Collection]): The MongoDB collection to operate on.
+            If None, uses MongodbClient[db][element["type"]].
+        db (str, optional): The database name to use if collection is None. Defaults to "task".
+        size (int, optional):
+            The maximum number of elements to keep in the field array. Defaults to 10.
+        field (str, optional):
+            The name of the array field to update within the document. Defaults to "tasks".
 
     Returns:
         None
+
+    Side Effects:
+        Modifies the specified MongoDB document by updating or appending the element.
+        Sets 'createdTime' and 'updatedTime' fields on the element as appropriate.
     """
     if collection is None:
         collection = MongodbClient[db][element["type"]]
+    current_time = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    if "createdTime" not in element:
+        element["createdTime"] = current_time
+    element["updatedTime"] = current_time
     update_fields = {f"{field}.$.{k}": v for k, v in element.items() if k != "id"}
     result = collection.update_one(
         {

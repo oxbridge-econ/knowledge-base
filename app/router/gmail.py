@@ -56,8 +56,8 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
                                      "error": "Invalid or expired credentials."}, status_code=401)
     task = {
         "id": f"{str(uuid.uuid4())}",
-        "status": "Pending",
-        "type": "Manual"
+        "status": "pending",
+        "type": "manual"
     }
     service = GmailService(credentials, email, task)
     body = body.model_dump()
@@ -74,7 +74,8 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         upsert=True
     )
     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
-    task_states[task["id"]] = task["status"]
+    upsert(email, task)
+    task_states[task["id"]] = "Pending"
     upsert(email, query, collection=collection, size=10, field="queries")
     return JSONResponse(content=task)
 

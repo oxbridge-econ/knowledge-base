@@ -255,23 +255,25 @@ class GmailService():
                 documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
             if "multipart/alternative" in mime_types and len(mime_types) == 1:
                 logger.info("Only multipart/alternative found in the email.")
-                self.task['status'] = "Failed"
-                task_states[self.task["id"]] = self.task["status"]
+                self.task['status'] = "failed"
+                task_states[self.task["id"]] = "Failed"
                 upsert(self.email, self.task)
             else:
-                self.task['status'] = "In Progress"
+                self.task['status'] = "in progress"
                 upsert(self.email, self.task)
-                task_states[self.task["id"]] = self.task["status"]
+                task_states[self.task["id"]] = "In Progress"
                 vstore.upload(self.email, documents, self.task)
 
     def search(self, query, max_results=500, check_next_page=False) -> list:
         """
-        Searches for Gmail threads based on a query string and returns the latest message from each thread.
+        Searches for Gmail threads based on a query string
+        and returns the latest message from each thread.
 
         Args:
             query (str): The search query string to filter threads.
             max_results (int, optional): The maximum number of threads to retrieve per page.
-            check_next_page (bool, optional): Whether to fetch additional pages of results if available.
+            check_next_page (bool, optional):
+                Whether to fetch additional pages of results if available.
 
         Returns:
             list: A list of message metadata dicts,
@@ -312,7 +314,8 @@ class GmailService():
             query (str): The search query to filter emails.
 
         Returns:
-            list: A list of email previews matching the query. Returns an empty list if no messages are found or if an error occurs.
+            list: A list of email previews matching the query.
+            Returns an empty list if no messages are found or if an error occurs.
 
         Raises:
             Logs exceptions of type KeyError, ValueError, or TypeError and returns an empty list.
@@ -332,10 +335,12 @@ class GmailService():
 
     def _get_email_by_messages(self, messages: list[dict]) -> dict:
         """
-        Fetches and parses email messages from the Gmail API, extracting key fields and decoding content.
+        Fetches and parses email messages from the Gmail API,
+        extracting key fields and decoding content.
 
         Args:
-            messages (list[dict]): A list of message metadata dictionaries, each containing at least an 'id' key.
+            messages (list[dict]): A list of message metadata dictionaries,
+            each containing at least an 'id' key.
 
         Returns:
             dict: A list of dictionaries, each representing an email with the following fields:
@@ -345,7 +350,8 @@ class GmailService():
                 - cc (str): The CC'd email addresses, if any.
                 - content (str): The decoded email body, either plain text or HTML.
                 - snippet (str): A short snippet of the email content.
-                - datetime (str): The email's sent date and time in "YYYY-MM-DD HH:MM:SS" format (HKT timezone).
+                - datetime (str):
+                    The email's sent date and time in "YYYY-MM-DD HH:MM:SS" format (HKT timezone).
                 - mimeType (str, optional): The MIME type of the email content.
 
         Notes:
@@ -444,7 +450,7 @@ def trigger():
                 task_id = f"{str(uuid.uuid4())}"
                 service.task = {
                     "id": task_id,
-                    "status": "Pending",
-                    "type": "CronJob"
+                    "status": "pending",
+                    "type": "cronjob"
                 }
                 threading.Thread(target=service.collect, args=[query]).start()

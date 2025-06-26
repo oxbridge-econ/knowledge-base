@@ -54,6 +54,6 @@ def process():
             {"$set": {"lastCollectDate": current_date, "task_id": task_id}},
             upsert=True
         )
-        task_states[task_id] = "Pending"
+        task_states[task_id] = "pending"
         service = GmailService(credentials)
         threading.Thread(target=service.collect, args=[record["query"], task_id]).start()
