@@ -79,6 +79,8 @@ async def get_tasks(task_type: str, email: str = Query(...)) -> JSONResponse:
     tasks = MongodbClient["task"][task_type].find_one({"_id": email})
     if tasks:
         del tasks["_id"]
+        if "tasks" in tasks:
+            tasks["tasks"].sort(key=lambda x: x.get("createdTime", ""))
     else:
         tasks = []
     return JSONResponse(content=tasks, status_code=200)
