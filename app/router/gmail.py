@@ -168,8 +168,8 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
         queries = []
     return JSONResponse(content=queries, status_code=200)
 
-@router.get("/docs")
-def get_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
+@router.post("/docs")
+def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
     """
     Retrieves all documents for a specific user from the MongoDB collection.
 
@@ -207,7 +207,11 @@ def get_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
         return JSONResponse(content={"valid": False,
                                      "error": "Invalid or expired credentials."}, status_code=401)
     service = GmailService(credentials, email)
-    return JSONResponse(content=service.preview(messages), status_code=200)
+    result = {
+        "docs": service.preview(messages=messages) if len(messages) > 0 else [],
+        "skip": body.skip + len(messages),
+    }
+    return JSONResponse(content=result, status_code=200)
 
 @router.get("/count")
 def count(email: str = Query(...)) -> JSONResponse:

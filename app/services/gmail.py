@@ -321,14 +321,10 @@ class GmailService():
             Logs exceptions of type KeyError, ValueError, or TypeError and returns an empty list.
         """
         try:
-            if query is not None:
-                messages = self.search(query, max_results=10)
-            emails = []
-            if not messages:
-                return emails
-            emails = self._get_email_by_messages(messages)
-            return emails
-
+            if messages is None or len(messages) == 0:
+                if query is not None:
+                    messages = self.search(query, max_results=10)
+            return self._get_email_by_messages(messages)
         except (KeyError, ValueError, TypeError) as e:
             logger.info("An error occurred: %s", e)
             return []
