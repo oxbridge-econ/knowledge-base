@@ -210,24 +210,8 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
     result = {
         "docs": service.preview(messages=messages) if len(messages) > 0 else [],
         "skip": body.skip + len(messages),
+        "total": astra_collection.count_documents(
+            filter=_filter, upper_bound=1000)
     }
     return JSONResponse(content=result, status_code=200)
 
-@router.get("/count")
-def count(email: str = Query(...)) -> JSONResponse:
-    """
-    Retrieves the count of documents for a specific user from the MongoDB collection.
-
-    Args:
-        email (str): The email address, provided as a query parameter.
-
-    Returns:
-        JSONResponse: A JSON response containing the count of the user's documents.
-    """
-    _filter = {
-        "metadata.userId": email,
-        "metadata.type": "gmail"
-    }
-    doc_count = astra_collection.count_documents(
-        filter=_filter, upper_bound=1000)
-    return JSONResponse(content={"count": doc_count}, status_code=200)
