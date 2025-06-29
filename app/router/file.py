@@ -33,6 +33,7 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
     task = {
         "id": f"{str(uuid.uuid4())}",
         "status": "pending",
+        "service": "file",
         "type": "manual"
     }
     task_states[task["id"]] = "Pending"

@@ -159,16 +159,26 @@ class GmailService():
                     mime_types.append(part["mimeType"])
                     if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
                         body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                        # body = re.sub(r"<[^>]+>", "", body)  # Remove HTML tags
                         metadata["mimeType"] = part["mimeType"]
                         metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
                     elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
                         body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                        # body = re.sub(r"<[^>]+>", "", body)
                         metadata["mimeType"] = part["mimeType"]
                         metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
+                    elif msg['mimeType'] == "multipart/alternative":
+                        for subpart in part['parts']:
+                            if subpart['mimeType'] == 'text/plain':
+                                body = base64.urlsafe_b64decode(subpart['body']['data']).decode('utf-8')
+                                metadata["mimeType"] = msg["payload"]["mimeType"]
+                                metadata["id"] = msg_id
+                                documents.append(Document(page_content=body, metadata=metadata))
+                            elif subpart['mimeType'] == 'text/html':
+                                body = base64.urlsafe_b64decode(subpart['body']['data']).decode('utf-8')
+                                metadata["mimeType"] = subpart['mimeType']
+                                metadata["id"] = msg_id
+                                documents.append(Document(page_content=body, metadata=metadata))
                     if part["filename"]:
                         attachment_id = part["body"]["attachmentId"]
                         logger.info("Downloading attachment: %s", part["filename"])
@@ -243,26 +253,24 @@ class GmailService():
                                             document.metadata["id"])
             elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
-                # body = re.sub(r"<[^>]+>", "", body)
                 metadata["mimeType"] = msg["payload"]["mimeType"]
                 metadata["id"] = msg_id
                 documents.append(Document(page_content=body, metadata=metadata))
             elif msg["payload"]["mimeType"] == "text/html" and "data" in msg["payload"]["body"]:
                 body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
-                # body = re.sub(r"<[^>]+>", "", body)
                 metadata["mimeType"] = msg["payload"]["mimeType"]
                 metadata["id"] = msg_id
                 documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
-            if "multipart/alternative" in mime_types and len(mime_types) == 1:
-                logger.info("Only multipart/alternative found in the email.")
-                self.task['status'] = "failed"
-                task_states[self.task["id"]] = "Failed"
-                upsert(self.email, self.task)
-            else:
-                self.task['status'] = "in progress"
-                upsert(self.email, self.task)
-                task_states[self.task["id"]] = "In Progress"
-                vstore.upload(self.email, documents, self.task)
+            # if "multipart/alternative" in mime_types and len(mime_types) == 1:
+            #     logger.info("Only multipart/alternative found in the email.")
+            #     self.task['status'] = "failed"
+            #     task_states[self.task["id"]] = "Failed"
+            #     upsert(self.email, self.task)
+            # else:
+            self.task['status'] = "in progress"
+            upsert(self.email, self.task)
+            task_states[self.task["id"]] = "In Progress"
+            vstore.upload(self.email, documents, self.task)
 
     def search(self, query, max_results=500, check_next_page=False) -> list:
         """
@@ -384,19 +392,46 @@ class GmailService():
             if 'parts' in msg['payload']:
                 for part in msg['payload']['parts']:
                     if part['mimeType'] == 'text/plain':
-                        email['content'] = base64.urlsafe_b64decode(
+                        content = base64.urlsafe_b64decode(
                             part['body']['data']).decode('utf-8')
+                        if content == "":
+                            continue
+                        email['content'] = content
                         email['mimeType'] = part['mimeType']
                         break
                     elif part['mimeType'] == 'text/html':
-                        email['content'] = base64.urlsafe_b64decode(
+                        content = base64.urlsafe_b64decode(
                             part['body']['data']).decode('utf-8')
+                        if content == "":
+                            continue
+                        email['content'] = content
                         email['mimeType'] = part['mimeType']
                         break
+                    elif part['mimeType'] == "multipart/alternative":
+                        for subpart in part['parts']:
+                            if subpart['mimeType'] == 'text/plain':
+                                content = base64.urlsafe_b64decode(
+                                    subpart['body']['data']).decode('utf-8')
+                                if content == "":
+                                    continue
+                                email['content'] = content
+                                email['mimeType'] = subpart['mimeType']
+                                break
+                            elif subpart['mimeType'] == 'text/html':
+                                content = base64.urlsafe_b64decode(
+                                    subpart['body']['data']).decode('utf-8')
+                                if content == "":
+                                    continue
+                                email['content'] = content
+                                email['mimeType'] = subpart['mimeType']
+                                break
             elif 'data' in msg['payload']['body']:
                 email['mimeType'] = msg['payload']['mimeType']
-                email['content'] = base64.urlsafe_b64decode(
+                content = base64.urlsafe_b64decode(
                     msg['payload']['body']['data']).decode('utf-8')
+                if content == "":
+                    continue
+                email['content'] = content
             emails.append(email)
         return emails
 

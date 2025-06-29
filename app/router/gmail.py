@@ -57,6 +57,7 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     task = {
         "id": f"{str(uuid.uuid4())}",
         "status": "pending",
+        "service": "gmail",
         "type": "manual"
     }
     service = GmailService(credentials, email, task)
@@ -214,4 +215,3 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
             filter=_filter, upper_bound=1000)
     }
     return JSONResponse(content=result, status_code=200)
-
