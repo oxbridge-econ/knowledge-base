@@ -167,7 +167,7 @@ class GmailService():
                         metadata["mimeType"] = part["mimeType"]
                         metadata["id"] = msg_id
                         documents.append(Document(page_content=body, metadata=metadata))
-                    elif msg['mimeType'] == "multipart/alternative":
+                    elif part['mimeType'] == "multipart/alternative":
                         for subpart in part['parts']:
                             if subpart['mimeType'] == 'text/plain':
                                 body = base64.urlsafe_b64decode(subpart['body']['data']).decode('utf-8')
@@ -474,11 +474,10 @@ def trigger():
         if not credentials.valid or credentials.expired:
             logger.error("Invalid or expired credentials for user: %s", record["_id"])
         service = GmailService(credentials, email=record["_id"])
-        body = record.model_dump()
-        body["filter"] = {k: v for k, v in body["filter"].items() if v is not None}
-        if "queries" not in body:
+        if "queries" in record:
             for query in record["queries"]:
                 task_id = f"{str(uuid.uuid4())}"
+                service.email = record["_id"]
                 service.task = {
                     "id": task_id,
                     "status": "pending",
