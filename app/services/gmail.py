@@ -483,7 +483,7 @@ def trigger():
                 # body = record.model_dump()
                 # body["filter"] = {k: v for k, v in body["filter"].items() if v is not None}
                 logger.info("Starting Gmail collection for user: %s", record["_id"])
-                
+
                 if "queries" in record and record["queries"]:
                     logger.info("Queries found for user: %s", record["_id"])
                     for query in record["queries"]:
