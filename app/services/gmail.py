@@ -6,8 +6,9 @@ import hashlib
 import os
 import uuid
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from venv import logger
-
+import logging
 from datetime import datetime, timezone, timedelta
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -25,12 +26,15 @@ from controllers.utils import upsert
 from controllers.topic import detector
 
 collection = MongodbClient["service"]["gmail"]
-
+logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
 ATTACHMENTS_DIR = "cache"
 os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
+
+MAX_WORKERS = 2
+thread_pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 
 class GmailService():
     """
@@ -459,28 +463,54 @@ def trigger():
         - Updates or inserts the user's query parameters in the MongoDB collection.
         - Modifies the global `task_states` dictionary with the new task's status.
     """
-    records = collection.find(projection={"token": 1, "refresh_token": 1, "queries": 1})
-    if not records:
-        logger.error("User not found.")
-    for record in records:
-        credentials = Credentials(
-            token=record["token"],
-            refresh_token=record["refresh_token"],
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=os.environ.get("CLIENT_ID"),
-            client_secret=os.environ.get("CLIENT_SECRET"),
-            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-        )
-        if not credentials.valid or credentials.expired:
-            logger.error("Invalid or expired credentials for user: %s", record["_id"])
-        service = GmailService(credentials, email=record["_id"])
-        if "queries" in record:
-            for query in record["queries"]:
-                task_id = f"{str(uuid.uuid4())}"
-                service.email = record["_id"]
-                service.task = {
-                    "id": task_id,
-                    "status": "pending",
-                    "type": "cronjob"
-                }
-                threading.Thread(target=service.collect, args=[query]).start()
+    logger.info("Starting Gmail collection trigger.")
+    try:
+        records = collection.find(projection={"token": 1, "refresh_token": 1, "queries": 1})
+        if not records:
+            logger.error("User not found.")
+        for record in records:
+            try:
+                credentials = Credentials(
+                    token=record["token"],
+                    refresh_token=record["refresh_token"],
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=os.environ.get("CLIENT_ID"),
+                    client_secret=os.environ.get("CLIENT_SECRET"),
+                    scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+                )
+                if not credentials.valid or credentials.expired:
+                    logger.error("Invalid or expired credentials for user: %s", record["_id"])
+                # body = record.model_dump()
+                # body["filter"] = {k: v for k, v in body["filter"].items() if v is not None}
+                logger.info("Starting Gmail collection for user: %s", record["_id"])
+                
+                if "queries" in record and record["queries"]:
+                    logger.info("Queries found for user: %s", record["_id"])
+                    for query in record["queries"]:
+                        task_id = f"{str(uuid.uuid4())}"
+                        task = {
+                            "id": task_id,
+                            "status": "pending",
+                            "type": "cronjob"
+                        }
+                        service = GmailService(credentials, email=record["_id"], task=task)
+
+                        # Submit to thread pool with error handling
+                        def collect_with_error_handling(service_instance, query_param):
+                            try:
+                                logger.info("Starting collection thread for task %s", 
+                                          service_instance.task["id"])
+                                service_instance.collect(query_param)
+                                logger.info("Collection completed for task %s", 
+                                          service_instance.task["id"])
+                            except Exception as e:
+                                logger.error("Error in collect thread for task %s: %s",service_instance.task["id"], str(e), exc_info=True)
+                        # threading.Thread(target=service.collect, args=[query]).start()
+                        future = thread_pool.submit(collect_with_error_handling, service, query)
+            except Exception as e:
+                error_msg = f"Error processing user {record['_id']}: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                continue
+    except Exception as e:
+        error_msg = f"Fatal error in Gmail collection trigger: {str(e)}"
+        logger.error(error_msg, exc_info=True)
