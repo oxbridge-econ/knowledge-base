@@ -699,7 +699,7 @@ def retry_pending_tasks():
                             gmail_task = {
                                 "id": task_id,
                                 "status": "in progress",
-                                "type": task.get("type", "retry"),
+                                "type": task.get("type", task.get("type")),
                                 "query": query,
                             }
 
