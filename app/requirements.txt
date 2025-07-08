@@ -85,6 +85,7 @@ onnx==1.18.0
 onnxruntime==1.22.0
 openai==1.82.0
 opencv-python==4.11.0.86
+openpyxl>=3.1.2
 orjson==3.10.18
 packaging==24.2
 pandas==2.2.3
