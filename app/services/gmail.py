@@ -5,10 +5,14 @@ import base64
 import hashlib
 import os
 import uuid
+
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
 import logging
+
 from datetime import datetime, timezone, timedelta
+import time
+from openai import RateLimitError
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from ics import Calendar
@@ -116,166 +120,224 @@ class GmailService():
         Returns:
             None
         """
-        documents = []
-        for message in self.search(query, max_results=500, check_next_page=True):
-            msg = self.service.users().messages().get(
-                userId="me", id=message["id"], format="full").execute()
-            metadata = {}
-            metadata["threadId"] = msg["threadId"]
-            metadata["msgId"] = msg["id"]
-            metadata["type"] = "gmail"
-            result = astra_collection.delete_many({
-                "$and": [
-                    {"metadata.threadId": msg["threadId"]},
-                    {"metadata.type": "gmail"},
-                    {"metadata.userId": self.email}
-                ]
-            })
-            logger.info("Deleted %d documents from AstraDB for threadId: %s",
-                        result.deleted_count, msg["threadId"])
-            msg_id = f"{msg['threadId']}-{msg['id']}"
-            for header in msg["payload"]["headers"]:
-                if header["name"] == "From":
-                    metadata["from"] = header["value"]
-                elif header["name"] == "To":
-                    metadata["to"] = header["value"]
-                elif header["name"] == "Subject":
-                    metadata["subject"] = header["value"]
-                    logger.info("subject: %s", metadata["subject"])
-                elif header["name"] == "Cc":
-                    metadata["cc"] = header["value"]
-            metadata["date"] = datetime.fromtimestamp(
-                int(msg["internalDate"]) / 1000, tz=timezone.utc)
-            metadata["lastModified"] = datetime.now(timezone.utc)
-            metadata["userId"] = self.service.users().getProfile(
-                userId="me").execute().get("emailAddress")
-            documents = []
-            mime_types = []
-            if msg["payload"]["mimeType"] in [
-                "multipart/alternative",
-                "multipart/related",
-                "multipart/mixed",
-            ]:
-                mime_types = []
-                attach_docs = []
-                for part in msg["payload"]["parts"]:
-                    mime_types.append(part["mimeType"])
-                    if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
-                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                        metadata["mimeType"] = part["mimeType"]
-                        metadata["id"] = msg_id
-                        documents.append(Document(page_content=body, metadata=metadata))
-                    elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
-                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                        metadata["mimeType"] = part["mimeType"]
-                        metadata["id"] = msg_id
-                        documents.append(Document(page_content=body, metadata=metadata))
-                    elif part['mimeType'] == "multipart/alternative":
-                        for subpart in part['parts']:
-                            if subpart['mimeType'] == 'text/plain':
-                                body = base64.urlsafe_b64decode(subpart['body']['data']).decode('utf-8')
-                                metadata["mimeType"] = msg["payload"]["mimeType"]
-                                metadata["id"] = msg_id
-                                documents.append(Document(page_content=body, metadata=metadata))
-                            elif subpart['mimeType'] == 'text/html':
-                                body = base64.urlsafe_b64decode(subpart['body']['data']).decode('utf-8')
-                                metadata["mimeType"] = subpart['mimeType']
-                                metadata["id"] = msg_id
-                                documents.append(Document(page_content=body, metadata=metadata))
-                    if part["filename"]:
-                        attachment_id = part["body"]["attachmentId"]
-                        logger.info("Downloading attachment: %s", part["filename"])
-                        attachment = (
-                            self.service.users()
-                            .messages()
-                            .attachments()
-                            .get(userId="me", messageId=message["id"], id=attachment_id)
-                            .execute()
-                        )
-                        file_data = base64.urlsafe_b64decode(attachment["data"].encode("UTF-8"))
-                        path = os.path.join(".", ATTACHMENTS_DIR, f"{msg['id']}_{part['filename']}")
-                        with open(path, "wb") as f:
-                            f.write(file_data)
-                        if part["mimeType"] == "application/pdf":
-                            attach_docs = PyPDFLoader(path).load()
-                        elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
-                            try:
-                                attach_docs = UnstructuredImageLoader(path).load()
-                            except (ValueError, TypeError) as e:
-                                logger.error("Error loading image: %s", e)
-                        elif part["filename"].endswith(".csv"):
-                            attach_docs = CSVLoader(path).load()
-                        elif (
-                            part["mimeType"]
-                            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        ):
-                            attach_docs = UnstructuredExcelLoader(path).load()
-                        elif part["mimeType"] == "application/ics":
-                            with open(path, "r", encoding="utf-8") as f:
-                                calendar = Calendar(f.read())
-                            for event in calendar.events:
-                                documents.append(
-                                    Document(
-                                        page_content=f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
-                                        metadata={
-                                            "attachment": part["filename"],
-                                            "mimeType": part["mimeType"],
-                                            "location": event.location,
-                                            "created": event.created.strftime("%d/%m/%Y %H:%M:%S"),
-                                            "last_modified": event.last_modified.strftime(
-                                                "%d/%m/%Y %H:%M:%S"
-                                            ),
-                                            "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
-                                            "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
-                                            "id": f"{msg_id}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}"
-                                        }
-                                    )
-                                )
-                        if os.path.exists(path):
-                            os.remove(path)
-                        for index, document in enumerate(attach_docs or []):
-                            if "page_label" in document.metadata:
-                                document.metadata["page"] = document.metadata["page_label"]
-                            document.metadata["attachId"] = part["body"]["attachmentId"]
-                            attachment = part["filename"]
-                            document.metadata["title"] = attachment.split(".")[0]
-                            document.metadata["ext"] = attachment.split(".")[-1]
-                            document.metadata = {
-                                key: value
-                                for key, value in document.metadata.items()
-                                if key in ["ext", "page", "title", "attachId"] \
-                                    and value is not None and value != ""
-                            }
-                            document.metadata.update(metadata)
-                            document.metadata["mimeType"] = part["mimeType"]
-                            document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
-                            if detector.invoke({"document": document}).model_dump()['verdict']:
-                                documents.append(document)
-                            else:
-                                logger.info("Document %s is not related to the topic.",
-                                            document.metadata["id"])
-            elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
-                body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
-                metadata["mimeType"] = msg["payload"]["mimeType"]
-                metadata["id"] = msg_id
-                documents.append(Document(page_content=body, metadata=metadata))
-            elif msg["payload"]["mimeType"] == "text/html" and "data" in msg["payload"]["body"]:
-                body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
-                metadata["mimeType"] = msg["payload"]["mimeType"]
-                metadata["id"] = msg_id
-                documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
-            # if "multipart/alternative" in mime_types and len(mime_types) == 1:
-            #     logger.info("Only multipart/alternative found in the email.")
-            #     self.task['status'] = "failed"
-            #     task_states[self.task["id"]] = "Failed"
-            #     upsert(self.email, self.task)
-            # else:
+        logger.info("Starting Gmail collection for user with query: %s", query)
+        try:
+            # Update task status to "in progress"
             self.task['status'] = "in progress"
             upsert(self.email, self.task)
-            task_states[self.task["id"]] = "In Progress"
-            vstore.upload(self.email, documents, self.task)
+            logger.info("✅ Task %s status updated to 'in progress'", self.task["id"])
 
-    def search(self, query, max_results=500, check_next_page=False) -> list:
+            documents = []
+            for message in self.search(query, max_results=200, check_next_page=True):
+                logger.info("Processing message with ID: %s", message["id"])
+                msg = self.service.users().messages().get(
+                    userId="me", id=message["id"], format="full").execute()
+                metadata = {}
+                metadata["threadId"] = msg["threadId"]
+                metadata["msgId"] = msg["id"]
+                metadata["type"] = "gmail"
+                result = astra_collection.delete_many({
+                    "$and": [
+                        {"metadata.threadId": msg["threadId"]},
+                        {"metadata.type": "gmail"},
+                        {"metadata.userId": self.email}
+                    ]
+                })
+                logger.info("Deleted %d documents from AstraDB for threadId: %s",
+                            result.deleted_count, msg["threadId"])
+                msg_id = f"{msg['threadId']}-{msg['id']}"
+                for header in msg["payload"]["headers"]:
+                    if header["name"] == "From":
+                        metadata["from"] = header["value"]
+                    elif header["name"] == "To":
+                        metadata["to"] = header["value"]
+                    elif header["name"] == "Subject":
+                        metadata["subject"] = header["value"]
+                        logger.info("subject: %s", metadata["subject"])
+                    elif header["name"] == "Cc":
+                        metadata["cc"] = header["value"]
+                metadata["date"] = datetime.fromtimestamp(
+                    int(msg["internalDate"]) / 1000, tz=timezone.utc)
+                metadata["lastModified"] = datetime.now(timezone.utc)
+                metadata["userId"] = self.service.users().getProfile(
+                    userId="me").execute().get("emailAddress")
+                documents = []
+                mime_types = []
+                if msg["payload"]["mimeType"] in [
+                    "multipart/alternative",
+                    "multipart/related",
+                    "multipart/mixed",
+                ]:
+                    mime_types = []
+                    attach_docs = []
+                    for part in msg["payload"]["parts"]:
+                        mime_types.append(part["mimeType"])
+                        if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
+                            body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                            metadata["mimeType"] = part["mimeType"]
+                            metadata["id"] = msg_id
+                            documents.append(Document(page_content=body, metadata=metadata))
+                        elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
+                            body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                            metadata["mimeType"] = part["mimeType"]
+                            metadata["id"] = msg_id
+                            documents.append(Document(page_content=body, metadata=metadata))
+                        elif part['mimeType'] == "multipart/alternative":
+                            for subpart in part['parts']:
+                                if subpart['mimeType'] == 'text/plain':
+                                    body = base64.urlsafe_b64decode(subpart['body']['data']).decode('utf-8')
+                                    metadata["mimeType"] = msg["payload"]["mimeType"]
+                                    metadata["id"] = msg_id
+                                    documents.append(Document(page_content=body, metadata=metadata))
+                                elif subpart['mimeType'] == 'text/html':
+                                    body = base64.urlsafe_b64decode(subpart['body']['data']).decode('utf-8')
+                                    metadata["mimeType"] = subpart['mimeType']
+                                    metadata["id"] = msg_id
+                                    documents.append(Document(page_content=body, metadata=metadata))
+                        if part["filename"]:
+                            attachment_id = part["body"]["attachmentId"]
+                            logger.info("Downloading attachment: %s", part["filename"])
+                            attachment = (
+                                self.service.users()
+                                .messages()
+                                .attachments()
+                                .get(userId="me", messageId=message["id"], id=attachment_id)
+                                .execute()
+                            )
+                            file_data = base64.urlsafe_b64decode(attachment["data"].encode("UTF-8"))
+                            path = os.path.join(".", ATTACHMENTS_DIR, f"{msg['id']}_{part['filename']}")
+                            with open(path, "wb") as f:
+                                f.write(file_data)
+                            if part["mimeType"] == "application/pdf":
+                                attach_docs = PyPDFLoader(path).load()
+                            elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
+                                try:
+                                    attach_docs = UnstructuredImageLoader(path).load()
+                                except (ValueError, TypeError) as e:
+                                    logger.error("Error loading image: %s", e)
+                            elif part["filename"].endswith(".csv"):
+                                attach_docs = CSVLoader(path).load()
+                            elif (
+                                part["mimeType"]
+                                == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            ):
+                                try:
+                                    attach_docs = UnstructuredExcelLoader(path).load()
+                                except ImportError as e:
+                                    logger.warning("Skipping Excel file - missing openpyxl dependency %s", e)
+                                    logger.warning("Fix: pip install openpyxl")
+                                    attach_docs = []
+                                except Exception as e:
+                                    logger.error("Error processing Excel file: %s", e)
+                                    attach_docs = []
+                            elif part["mimeType"] == "application/ics":
+                                with open(path, "r", encoding="utf-8") as f:
+                                    calendar = Calendar(f.read())
+                                for event in calendar.events:
+                                    documents.append(
+                                        Document(
+                                            page_content=f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
+                                            metadata={
+                                                "attachment": part["filename"],
+                                                "mimeType": part["mimeType"],
+                                                "location": event.location,
+                                                "created": event.created.strftime("%d/%m/%Y %H:%M:%S"),
+                                                "last_modified": event.last_modified.strftime(
+                                                    "%d/%m/%Y %H:%M:%S"
+                                                ),
+                                                "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
+                                                "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
+                                                "id": f"{msg_id}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}"
+                                            }
+                                        )
+                                    )
+                            if os.path.exists(path):
+                                os.remove(path)
+                            for index, document in enumerate(attach_docs or []):
+                                if "page_label" in document.metadata:
+                                    document.metadata["page"] = document.metadata["page_label"]
+                                document.metadata["attachId"] = part["body"]["attachmentId"]
+                                attachment = part["filename"]
+                                document.metadata["title"] = attachment.split(".")[0]
+                                document.metadata["ext"] = attachment.split(".")[-1]
+                                document.metadata = {
+                                    key: value
+                                    for key, value in document.metadata.items()
+                                    if key in ["ext", "page", "title", "attachId"] \
+                                        and value is not None and value != ""
+                                }
+                                document.metadata.update(metadata)
+                                document.metadata["mimeType"] = part["mimeType"]
+                                document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
+
+                                max_retries = 3
+                                for retry in range(max_retries):
+                                    try:
+                                        is_relevant = detector.invoke({"document": document}).model_dump()['verdict']
+                                        if is_relevant:
+                                            documents.append(document)
+                                        else:
+                                            logger.info("Document %s is not related to the topic.",
+                                                        document.metadata["id"])
+                                        break  # Success, exit retry loop
+                                    except RateLimitError as e:
+                                        wait_time = 60
+                                        logger.warning(f"Rate limit hit. Waiting {wait_time}s before retry {retry+1}/{max_retries}")
+                                        if retry < max_retries - 1:
+                                            time.sleep(wait_time)
+                                        else:
+                                            logger.error("Max retries reached for OpenAI API. Skipping document.")
+                                            # Just add the document without checking relevance as fallback
+                                            documents.append(document)
+                                    except Exception as e:
+                                        logger.error("Error checking document relevance: %s", str(e))
+                                        # Add document anyway as fallback
+                                        documents.append(document)
+                                        break
+                elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
+                    body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
+                    metadata["mimeType"] = msg["payload"]["mimeType"]
+                    metadata["id"] = msg_id
+                    documents.append(Document(page_content=body, metadata=metadata))
+                elif msg["payload"]["mimeType"] == "text/html" and "data" in msg["payload"]["body"]:
+                    body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
+                    metadata["mimeType"] = msg["payload"]["mimeType"]
+                    metadata["id"] = msg_id
+                    documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
+                # if "multipart/alternative" in mime_types and len(mime_types) == 1:
+                #     logger.info("Only multipart/alternative found in the email.")
+                #     self.task['status'] = "failed"
+                #     task_states[self.task["id"]] = "Failed"
+                #     upsert(self.email, self.task)
+                # else:
+            if documents:
+                logger.info("Uploading %d documents for task %s", len(documents), self.task["id"])
+                try:
+                    vstore.upload(self.email, documents, self.task)
+                    logger.info("✅ Vector store upload successful for task %s", self.task["id"])
+                    
+                except Exception as upload_error:
+                    logger.error("💥 Vector store upload failed for task %s: %s", 
+                            self.task["id"], str(upload_error))
+                    raise upload_error
+            # Mark task as completed
+            self.task['status'] = "completed"
+            self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+            task_states[self.task["id"]] = "Completed"
+            upsert(self.email, self.task)
+            
+            logger.info("✅ Collection completed for task %s", 
+                    self.task["id"])
+
+        except Exception as e:
+            logger.error("💥 Error in collect for task %s: %s", self.task["id"], str(e), exc_info=True)
+            # Mark task as failed
+            self.task['status'] = "failed"
+            task_states[self.task["id"]] = "Failed"
+            upsert(self.email, self.task)
+            raise
+
+    def search(self, query, max_results=200, check_next_page=False) -> list:
         """
         Searches for Gmail threads based on a query string
         and returns the latest message from each thread.
