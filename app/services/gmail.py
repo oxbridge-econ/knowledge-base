@@ -329,6 +329,7 @@ class GmailService():
             # Mark task as failed
             self.task['status'] = "failed"
             task_states[self.task["id"]] = "Failed"
+            self.task["failReason"] = str(e)
             upsert(self.email, self.task)
             raise
 
