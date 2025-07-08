@@ -55,15 +55,16 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
                                      "error": "Invalid or expired credentials."}, status_code=401)
+    body = body.model_dump()
+    query = {k: v for k, v in body.items() if v is not None}
     task = {
         "id": f"{str(uuid.uuid4())}",
         "status": "pending",
         "service": "gmail",
-        "type": "manual"
+        "type": "manual",
+        "query": query
     }
     service = GmailService(credentials, email, task)
-    body = body.model_dump()
-    query = {k: v for k, v in body.items() if v is not None}
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
     data = {

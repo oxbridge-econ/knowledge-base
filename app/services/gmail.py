@@ -5,7 +5,6 @@ import base64
 import hashlib
 import os
 import uuid
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
 import logging
@@ -487,11 +486,16 @@ def trigger():
                 if "queries" in record and record["queries"]:
                     logger.info("Queries found for user: %s", record["_id"])
                     for query in record["queries"]:
+                        if (query["updatedTime"]):
+                            updated_time = query["updatedTime"]
+                            date = updated_time.split(' ')[0]
+                            query["after"] = date
                         task_id = f"{str(uuid.uuid4())}"
                         task = {
                             "id": task_id,
                             "status": "pending",
-                            "type": "cronjob"
+                            "type": "cronjob",
+                            "query": query,
                         }
                         service = GmailService(credentials, email=record["_id"], task=task)
 
@@ -514,3 +518,255 @@ def trigger():
     except Exception as e:
         error_msg = f"Fatal error in Gmail collection trigger: {str(e)}"
         logger.error(error_msg, exc_info=True)
+
+
+def retry_pending_tasks():
+    """
+    Retries all pending tasks found in the task database collections (manual and cronjob).
+    
+    Only retries tasks that have been pending for more than 6 hours since their last update.
+    
+    This function searches through both manual and cronjob collections for pending tasks,
+    retrieves the corresponding user credentials from the gmail collection,
+    and resubmits the tasks for processing using the query stored in the task object.
+    
+    Side Effects:
+        - Updates task status from "pending" to "in progress"
+        - Submits tasks to the thread pool for execution
+        - Logs progress and errors
+    """
+    logger.info("Starting retry of pending tasks (pending for more than 6 hours).")
+    try:
+        # Access the task database collections
+        task_db = MongodbClient["task"]
+        manual_collection = task_db["manual"]
+        cronjob_collection = task_db["cronjob"]
+        
+        # Calculate the cutoff time (6 hours ago)
+        six_hours_ago = datetime.now(timezone.utc) - timedelta(hours=6)
+        
+        # Process both collections
+        for collection_name, task_collection in [("manual", manual_collection), ("cronjob", cronjob_collection)]:
+            logger.info("Processing %s collection for pending tasks older than 6 hours", collection_name)
+            
+            # Find all records with pending tasks
+            records = task_collection.find({
+                "tasks": {
+                    "$elemMatch": {
+                        "status": "pending"
+                    }
+                }
+            })
+            
+            for record in records:
+                user_email = record["_id"]
+                logger.info("Processing pending tasks for user: %s in %s collection", user_email, collection_name)
+                
+                try:
+                    # Get user credentials from gmail collection
+                    user_creds = collection.find_one(
+                        {"_id": user_email},
+                        projection={"token": 1, "refresh_token": 1}
+                    )
+                    
+                    if not user_creds:
+                        logger.error("User credentials not found for: %s", user_email)
+                        continue
+                    
+                    # Validate credentials
+                    credentials = Credentials(
+                        token=user_creds["token"],
+                        refresh_token=user_creds["refresh_token"],
+                        token_uri="https://oauth2.googleapis.com/token",
+                        client_id=os.environ.get("CLIENT_ID"),
+                        client_secret=os.environ.get("CLIENT_SECRET"),
+                        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+                    )
+                    
+                    if not credentials.valid or credentials.expired:
+                        logger.error("Invalid or expired credentials for user: %s", user_email)
+                        continue
+                    
+                    # Process each pending task that is older than 6 hours
+                    for task in record.get("tasks", []):
+                        if task.get("status") == "pending":
+                            # Check if task has been pending for more than 6 hours
+                            task_updated = task.get("updatedTime")
+                            if not task_updated:
+                                logger.warning("Task without updated time found for user: %s", user_email)
+                                continue
+                            
+                            # Parse the date format: 2025/07/08 07:39:40
+                            try:
+                                if isinstance(task_updated, str):
+                                    # Parse the specific format: YYYY/MM/DD HH:MM:SS
+                                    task_updated_dt = datetime.strptime(task_updated, "%Y/%m/%d %H:%M:%S")
+                                    # Assume UTC timezone if not specified
+                                    task_updated_dt = task_updated_dt.replace(tzinfo=timezone.utc)
+                                elif isinstance(task_updated, datetime):
+                                    task_updated_dt = task_updated
+                                    # Ensure timezone awareness
+                                    if task_updated_dt.tzinfo is None:
+                                        task_updated_dt = task_updated_dt.replace(tzinfo=timezone.utc)
+                                else:
+                                    logger.warning("Unknown updated time format for task: %s", task.get("id"))
+                                    continue
+                            except ValueError as e:
+                                logger.warning("Invalid updated time format for task %s: %s", task.get("id"), e)
+                                continue
+                            
+                            # Check if task is older than 6 hours
+                            if task_updated_dt >= six_hours_ago:
+                                logger.debug("Task %s is not old enough to retry (updated: %s)", 
+                                           task.get("id"), task_updated_dt)
+                                continue
+                            
+                            task_id = task.get("id")
+                            if not task_id:
+                                logger.warning("Task without ID found for user: %s", user_email)
+                                continue
+                            
+                            # Get the query from the task object
+                            query = task.get("query")
+                            if not query:
+                                logger.warning("Task without query found for user: %s, task ID: %s", user_email, task_id)
+                                continue
+                            
+                            logger.info("Retrying pending task: %s for user: %s (pending since: %s)", 
+                                      task_id, user_email, task_updated_dt)
+                            # Create task object for GmailService
+                            gmail_task = {
+                                "id": task_id,
+                                "status": "in progress",
+                                "type": task.get("type", "retry"),
+                                "query": query,
+                            }
+                            
+                            # Create service instance
+                            service = GmailService(credentials, email=user_email, task=gmail_task)
+                            
+                            # Submit to thread pool with error handling
+                            def collect_with_error_handling(service_instance, query_param, task_coll, task_id_param):
+                                try:
+                                    logger.info("Starting retry collection thread for task %s", task_id_param)
+                                    service_instance.collect(query_param)
+                                    logger.info("Retry collection completed for task %s", task_id_param)
+                                    # Update global task states
+                                    task_states[task_id_param] = "Completed"
+                                    
+                                except Exception as e:
+                                    logger.error("Error in retry collect thread for task %s: %s",
+                                               task_id_param, str(e), exc_info=True)
+                                    
+                                    # Update global task states
+                                    task_states[task_id_param] = "Failed"
+                            
+                            # Submit task to thread pool
+                            future = thread_pool.submit(
+                                collect_with_error_handling, 
+                                service, 
+                                query,  # Use the query from the task object
+                                task_collection, 
+                                task_id
+                            )
+                            logger.info("Submitted pending task %s to thread pool", task_id)
+                            
+                except Exception as e:
+                    error_msg = f"Error processing pending tasks for user {user_email}: {str(e)}"
+                    logger.error(error_msg, exc_info=True)
+                    continue
+                    
+    except Exception as e:
+        error_msg = f"Fatal error in retry pending tasks: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+
+def get_pending_tasks_count():
+    """
+    Returns the count of pending tasks across both manual and cronjob collections.
+    
+    Returns:
+        dict: A dictionary with counts for each collection and total count.
+    """
+    try:
+        task_db = MongodbClient["task"]
+        manual_collection = task_db["manual"]
+        cronjob_collection = task_db["cronjob"]
+        
+        # Count pending tasks in each collection
+        manual_count = manual_collection.aggregate([
+            {"$match": {"tasks.status": "pending"}},
+            {"$unwind": "$tasks"},
+            {"$match": {"tasks.status": "pending"}},
+            {"$count": "pending_tasks"}
+        ])
+        manual_count = list(manual_count)
+        manual_count = manual_count[0]["pending_tasks"] if manual_count else 0
+        
+        cronjob_count = cronjob_collection.aggregate([
+            {"$match": {"tasks.status": "pending"}},
+            {"$unwind": "$tasks"},
+            {"$match": {"tasks.status": "pending"}},
+            {"$count": "pending_tasks"}
+        ])
+        cronjob_count = list(cronjob_count)
+        cronjob_count = cronjob_count[0]["pending_tasks"] if cronjob_count else 0
+
+        return {
+            "manual": manual_count,
+            "cronjob": cronjob_count,
+            "total": manual_count + cronjob_count
+        }
+    except Exception as e:
+        logger.error("Error getting pending tasks count: %s", str(e))
+        return {"manual": 0, "cronjob": 0, "total": 0}
+
+def get_pending_tasks_details():
+    """
+    Returns detailed information about all pending tasks.
+    
+    Returns:
+        dict: A dictionary containing pending task details for each collection.
+    """
+    try:
+        task_db = MongodbClient["task"]
+        manual_collection = task_db["manual"]
+        cronjob_collection = task_db["cronjob"]
+
+        pending_tasks = {"manual": [], "cronjob": []}
+
+        # Get pending tasks from manual collection
+        manual_records = manual_collection.find({
+            "tasks": {"$elemMatch": {"status": "pending"}}
+        })
+
+        for record in manual_records:
+            for task in record.get("tasks", []):
+                if task.get("status") == "pending":
+                    pending_tasks["manual"].append({
+                        "user_email": record["_id"],
+                        "task_id": task.get("id"),
+                        "task_type": task.get("type"),
+                        "created": task.get("created"),
+                        "updated": task.get("updated"),
+                        "query": task.get("query")
+                    })
+        # Get pending tasks from cronjob collection
+        cronjob_records = cronjob_collection.find({
+            "tasks": {"$elemMatch": {"status": "pending"}}
+        })
+
+        for record in cronjob_records:
+            for task in record.get("tasks", []):
+                if task.get("status") == "pending":
+                    pending_tasks["cronjob"].append({
+                        "user_email": record["_id"],
+                        "task_id": task.get("id"),
+                        "task_type": task.get("type"),
+                        "created": task.get("created"),
+                        "updated": task.get("updated"),
+                        "query": task.get("query")
+                    })
+        return pending_tasks
+    except Exception as e:
+        logger.error("Error getting pending tasks details: %s", str(e))
+        return {"manual": [], "cronjob": []}
