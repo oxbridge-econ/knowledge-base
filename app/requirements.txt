@@ -24,6 +24,7 @@ dataclasses-json==0.6.7
 deprecation==2.1.0
 distro==1.9.0
 dnspython==2.7.0
+docx2txt==0.9
 emoji==2.14.1
 fastapi==0.115.12
 filelock==3.18.0

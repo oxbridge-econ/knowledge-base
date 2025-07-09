@@ -277,7 +277,7 @@ class GmailService():
                                         break  # Success, exit retry loop
                                     except RateLimitError as e:
                                         wait_time = 60
-                                        logger.warning(f"Rate limit hit. Waiting {wait_time}s before retry {retry+1}/{max_retries}")
+                                        logger.warning("Rate limit hit. Waiting %ds before retry %d/%d", wait_time, retry+1, max_retries)
                                         if retry < max_retries - 1:
                                             time.sleep(wait_time)
                                         else:
