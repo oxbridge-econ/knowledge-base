@@ -10,6 +10,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_astradb import AstraDBVectorStore
 from schema import task_states
 from controllers.utils import upsert
+from dotenv import load_dotenv
+
+load_dotenv()
 
 astra_collection = astrapy.DataAPIClient(
     os.environ["ASTRA_DB_APPLICATION_TOKEN"]).get_database(

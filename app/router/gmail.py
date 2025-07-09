@@ -11,7 +11,6 @@ from services import GmailService
 from schema import EmailFilter, DocsReq, task_states
 from models.db import MongodbClient, astra_collection
 from controllers.utils import upsert
-from services.gmail import trigger
 
 router = APIRouter(prefix="/service/gmail", tags=["service"])
 collection = MongodbClient["service"]["gmail"]
@@ -216,17 +215,3 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
             filter=_filter, upper_bound=1000)
     }
     return JSONResponse(content=result, status_code=200)
-
-@router.get("/trigger")
-def get_task() -> JSONResponse:
-    """
-    Retrieves the task status for a specific user from the MongoDB collection.
-
-    Args:
-        email (str): The email address, provided as a query parameter.
-
-    Returns:
-        JSONResponse: A JSON response containing the user's task status.
-    """
-    trigger()
-    return JSONResponse(content="abc", status_code=200)
