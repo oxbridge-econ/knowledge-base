@@ -27,10 +27,9 @@ prompt = PromptTemplate(
     Return results in strict JSON format matching this schema:
     {format_instructions}
     """,
-        input_variables=["document"],
+        input_variables=["document", "topics"],
         partial_variables={
-            "format_instructions": parser.get_format_instructions(),
-            "topics": ["Finance", "Economy", "AI", "IT", "Politics"],
+            "format_instructions": parser.get_format_instructions()
         },
     )
 

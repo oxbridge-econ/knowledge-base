@@ -34,6 +34,8 @@ class EmailFilter(BaseModel):
     before: Optional[str] = None
     after: Optional[str] = None
     max_results: Optional[int] = Field(10, alias="maxResults")
+    topic_detect: Optional[bool] = False
+    topics: Optional[List[str]] = ["Finance", "Economy", "AI", "IT", "Politics"]
 
     @classmethod
     def validate_before_after(

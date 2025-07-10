@@ -11,7 +11,6 @@ from services import GmailService
 from schema import EmailFilter, DocsReq, task_states
 from models.db import MongodbClient, astra_collection
 from controllers.utils import upsert
-from services.gmail import trigger
 
 router = APIRouter(prefix="/service/gmail", tags=["service"])
 collection = MongodbClient["service"]["gmail"]
@@ -55,15 +54,16 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
                                      "error": "Invalid or expired credentials."}, status_code=401)
+    body = body.model_dump()
+    query = {k: v for k, v in body.items() if v is not None}
     task = {
         "id": f"{str(uuid.uuid4())}",
         "status": "pending",
         "service": "gmail",
-        "type": "manual"
+        "type": "manual",
+        "query": query
     }
     service = GmailService(credentials, email, task)
-    body = body.model_dump()
-    query = {k: v for k, v in body.items() if v is not None}
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
     data = {
@@ -216,17 +216,3 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
             filter=_filter, upper_bound=1000)
     }
     return JSONResponse(content=result, status_code=200)
-
-@router.get("/trigger")
-def get_task() -> JSONResponse:
-    """
-    Retrieves the task status for a specific user from the MongoDB collection.
-
-    Args:
-        email (str): The email address, provided as a query parameter.
-
-    Returns:
-        JSONResponse: A JSON response containing the user's task status.
-    """
-    trigger()
-    return JSONResponse(content="abc", status_code=200)
