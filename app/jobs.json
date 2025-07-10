@@ -15,8 +15,8 @@
         "id": "gmail_collection_retry",
         "func": "services.gmail:retry_pending_tasks",
         "trigger": "cron",
-        "hour": "7",
-        "minute": "15",
+        "hour": "12",
+        "minute": "30",
         "second": "0",
         "max_instances": 1,
         "coalesce": true

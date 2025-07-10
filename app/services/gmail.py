@@ -615,7 +615,7 @@ def retry_pending_tasks():
             records = task_collection.find({
                 "tasks": {
                     "$elemMatch": {
-                        "status": "pending"
+                        "status": {"$in": ["pending", "in progress"]}
                     }
                 }
             })
@@ -650,7 +650,7 @@ def retry_pending_tasks():
                     
                     # Process each pending task that is older than 6 hours
                     for task in record.get("tasks", []):
-                        if task.get("status") == "pending":
+                        if task.get("status") == "pending" or task.get("status") == "in progress":
                             # Check if task has been pending for more than 6 hours
                             task_updated = task.get("updatedTime")
                             if not task_updated:
