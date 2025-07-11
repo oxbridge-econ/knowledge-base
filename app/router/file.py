@@ -285,5 +285,5 @@ async def load(
         email, successful_uploads, total_files
     )
 
-    return JSONResponse(content=summary)
+    return JSONResponse(content=task)
 
