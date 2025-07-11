@@ -4,6 +4,7 @@ import threading
 from typing import List, Dict, Any
 from venv import logger
 import os
+from pathlib import Path
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from fastapi.responses import JSONResponse
 from controllers.utils import upsert
@@ -77,7 +78,6 @@ def upload_file_to_azure(file_content: bytes, blob_path: str, content_type: str 
         return {
             "success": True,
             "blob_path": blob_path,
-            "url": blob_client.url,
             "message": "File uploaded successfully"
         }
 
@@ -208,14 +208,18 @@ async def load(
         )
 
     results = []
-
+    task = {
+            "id": str(uuid.uuid4()),
+            "status": "pending",
+            "service": "file",
+            "type": "manual",
+            }
     for file in files:
         result = {
             "filename": file.filename,
             "content_type": file.content_type,
             "validation": {"valid": False},
             "azure_upload": {"success": False},
-            "processing": {"success": False}
         }
 
         try:
@@ -246,20 +250,6 @@ async def load(
 
             result["azure_upload"] = azure_result
 
-            # Create task for processing
-            task = {
-                "id": str(uuid.uuid4()),
-                "status": "pending",
-                "service": "file",
-                "type": "manual",
-                "filename": file.filename,
-                "azure_uploaded": azure_result["success"]
-            }
-
-            if azure_result["success"]:
-                task["azure_url"] = azure_result.get("url")
-                task["blob_path"] = azure_result.get("blob_path")
-
             # Update task states
             task_states[task["id"]] = "Pending"
             upsert(email, task)
@@ -270,15 +260,6 @@ async def load(
                     target=_process_file_async,
                     args=(file_content, file.filename, email, file.content_type, task)
                 ).start()
-
-                result["processing"] = {
-                    "success": True,
-                    "task_id": task["id"],
-                    "message": "File processing started"
-                }
-                
-
-            result["task"] = task
         except Exception as e:
             logger.error("Error processing file %s: %s", file.filename, e)
             result["error"] = str(e)
@@ -295,7 +276,8 @@ async def load(
         "successful_validations": successful_validations,
         "successful_uploads": successful_uploads,
         "failed_files": total_files - successful_uploads,
-        "results": results
+        "results": results,
+        "task": task
     }
 
     logger.info(
