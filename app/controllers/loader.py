@@ -296,7 +296,7 @@ def upload(docs: list[Document], email: str, task: dict):
             else:
                 ids.append(f"{document.metadata['id']}-{index}")
             documents.append(document)
-        vstore.add_documents_with_retry(documents, ids, email, task)
+    vstore.add_documents_with_retry(documents, ids, email, task)
 
 
 def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_type: str = None) -> Dict[str, Any]:
