@@ -150,6 +150,10 @@ def _process_file_async(
         task: The task dictionary
     """
     try:
+        task["status"] = "in progress"
+        task_states[task["id"]] = "In Progress"
+        upsert(email, task)
+        logger.info("Task %s: Status updated to 'in progress'.", task["id"])
         if content_type == "application/pdf":
             load_pdf(file_content, filename, email, task)
         elif content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -158,9 +162,20 @@ def _process_file_async(
             load_img(file_content, filename, email, task)
         else:
             logger.warning("Unsupported content type for processing: %s", content_type)
+            task["status"] = "completed"
+            task_states[task["id"]] = "Completed"
+            upsert(email, task)
+            logger.info("Task %s: Marked as 'completed' (unsupported file type).", task["id"])
+            return
+
+        task["status"] = "completed"
+        task_states[task["id"]] = "Completed"
+        upsert(email, task)
+        logger.info("Task %s: Status updated to 'completed'.", task["id"])
     except Exception as e:
         logger.error("Error processing file %s: %s", filename, e)
         task["status"] = "failed"
+        task["error_message"] = str(e)
         task_states[task["id"]] = "Failed"
         upsert(email, task)
 
@@ -259,6 +274,7 @@ async def load(
                     "task_id": task["id"],
                     "message": "File processing started"
                 }
+                
 
             result["task"] = task
         except Exception as e:
