@@ -163,12 +163,11 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict, content_type
         os.remove(path)
         upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
-    except (FileNotFoundError, ValueError, OSError) as e:
+    except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
         task["status"] = "failed"
         upsert(email, task)
         task_states[task["id"]] = "Failed"
-        raise e
     
     task["status"] = "completed"
     upsert(email, task)
@@ -201,14 +200,15 @@ def load_img(content: bytes, filename: str, email: str, task: dict, content_type
         documents.append(doc)
         upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
+
     except (FileNotFoundError, ValueError, OSError) as e:
         task["status"] = "failed"
         upsert(email, task)
         task_states[task["id"]] = "Failed"
-        raise e
     task["status"] = "completed"
     upsert(email, task)
     task_states[task["id"]] = "Completed"
+
 
 def load_docx(content: bytes, filename: str, email: str, task: dict, content_type: str):
     """
@@ -238,15 +238,16 @@ def load_docx(content: bytes, filename: str, email: str, task: dict, content_typ
         os.remove(path)
         upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
-    except (FileNotFoundError, ValueError, OSError) as e:
+    except (FileNotFoundError, ValueError, OSError):
         os.remove(path)
         task["status"] = "failed"
         upsert(email, task)
         task_states[task["id"]] = "Failed"
-        raise e
+
     task["status"] = "completed"
     upsert(email, task)
     task_states[task["id"]] = "Completed"
+
 
 def upload(docs: list[Document], email: str, task: dict):
     """
@@ -297,6 +298,7 @@ def upload(docs: list[Document], email: str, task: dict):
                 ids.append(f"{document.metadata['id']}-{index}")
             documents.append(document)
     vstore.add_documents_with_retry(documents, ids, email, task)
+
 
 
 def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_type: str = None) -> Dict[str, Any]:
