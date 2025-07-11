@@ -1,6 +1,5 @@
 """Module for defining the main routes of the API."""
 import uuid
-from pathlib import Path
 import threading
 from typing import List, Dict, Any
 from venv import logger
@@ -107,6 +106,7 @@ def _validate_file(file: UploadFile) -> Dict[str, Any]:
         file: The uploaded file to validate
         
     Returns:
+
         Dict containing validation result
     """
     if not file.filename:
@@ -179,6 +179,7 @@ def _process_file_async(
         task_states[task["id"]] = "Failed"
         upsert(email, task)
 
+
 @router.post("")
 async def load(
     files: List[UploadFile] = File(...), email: str = Query(...)) -> JSONResponse:
@@ -197,6 +198,7 @@ async def load(
             status_code=400,
             detail="No files provided"
         )
+
 
     # Validate email
     if not email or "@" not in email:
@@ -302,3 +304,4 @@ async def load(
     )
 
     return JSONResponse(content=summary)
+
