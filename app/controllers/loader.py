@@ -5,8 +5,10 @@ import json
 import os
 from io import BytesIO
 import threading
+from pathlib import Path
 from datetime import datetime
-
+from typing import List, Dict, Any
+from venv import logger
 from PIL import Image
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import Docx2txtLoader
@@ -14,6 +16,8 @@ from langchain_core.documents import Document
 from pdf2image import convert_from_path
 from pydantic import BaseModel
 from pypdf import PdfReader
+from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.core.exceptions import AzureError
 
 from models.llm import client
 from models.db import vstore
@@ -22,6 +26,8 @@ from schema import task_states
 
 
 text_splitter = RecursiveCharacterTextSplitter()
+AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
+AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
 
 class ExtractionResult(BaseModel):
     """
@@ -104,7 +110,7 @@ def extract_text_from_image(image):
     )
     return json.loads(response.choices[0].message.content)["content"]
 
-def load_pdf(content: bytes, filename: str, email: str, task: dict):
+def load_pdf(content: bytes, filename: str, email: str, task: dict, content_type: str):
     """
     Loads and processes PDF files from a specified directory.
 
@@ -137,10 +143,10 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
     with open(path, "wb") as f:
         f.write(content)
     try:
-        # task["status"] = "in progress"
-        # task["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-        # upsert(email, task)
-        # task_states[task["id"]] = "In Progress"
+        task["status"] = "in progress"
+        task["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+        upsert(email, task)
+        task_states[task["id"]] = "In Progress"
         pdf = PdfReader(path)
         for page_num, page in enumerate(pdf.pages):
             contain = check_image(page)
@@ -155,15 +161,20 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
                 metadata={"source": filename, "page": page_num + 1})
             documents.append(doc)
         os.remove(path)
+        upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError) as e:
         os.remove(path)
-        # task["status"] = "failed"
-        # upsert(email, task)
-        # task_states[task["id"]] = "Failed"
+        task["status"] = "failed"
+        upsert(email, task)
+        task_states[task["id"]] = "Failed"
         raise e
+    
+    task["status"] = "completed"
+    upsert(email, task)
+    task_states[task["id"]] = "Completed"
 
-def load_img(content: bytes, filename: str, email: str, task: dict):
+def load_img(content: bytes, filename: str, email: str, task: dict, content_type: str):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
@@ -181,21 +192,25 @@ def load_img(content: bytes, filename: str, email: str, task: dict):
         - Uploads the extracted documents using the upload function.
     """
     try:
-        # task["status"] = "in progress"
-        # upsert(email, task)
-        # task_states[task["id"]] = "In Progress"
+        task["status"] = "in progress"
+        upsert(email, task)
+        task_states[task["id"]] = "In Progress"
         documents = []
         text = extract_text_from_image(Image.open(BytesIO(content)))
         doc = Document(page_content=text, metadata={"source": filename})
         documents.append(doc)
+        upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError) as e:
-        # task["status"] = "failed"
-        # upsert(email, task)
-        # task_states[task["id"]] = "Failed"
+        task["status"] = "failed"
+        upsert(email, task)
+        task_states[task["id"]] = "Failed"
         raise e
+    task["status"] = "completed"
+    upsert(email, task)
+    task_states[task["id"]] = "Completed"
 
-def load_docx(content: bytes, filename: str, email: str, task: dict):
+def load_docx(content: bytes, filename: str, email: str, task: dict, content_type: str):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
@@ -214,20 +229,24 @@ def load_docx(content: bytes, filename: str, email: str, task: dict):
     """
     path = os.path.join("/tmp", filename)
     try:
-        # task["status"] = "in progress"
-        # upsert(email, task)
-        # task_states[task["id"]] = "In Progress"
+        task["status"] = "in progress"
+        upsert(email, task)
+        task_states[task["id"]] = "In Progress"
         with open(path, "wb") as f:
             f.write(content)
         documents = Docx2txtLoader(file_path=path).load()
         os.remove(path)
+        upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError) as e:
         os.remove(path)
-        # task["status"] = "failed"
-        # upsert(email, task)
-        # task_states[task["id"]] = "Failed"
+        task["status"] = "failed"
+        upsert(email, task)
+        task_states[task["id"]] = "Failed"
         raise e
+    task["status"] = "completed"
+    upsert(email, task)
+    task_states[task["id"]] = "Completed"
 
 def upload(docs: list[Document], email: str, task: dict):
     """
@@ -278,3 +297,57 @@ def upload(docs: list[Document], email: str, task: dict):
                 ids.append(f"{document.metadata['id']}-{index}")
             documents.append(document)
         vstore.add_documents_with_retry(documents, ids, email, task)
+
+
+def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_type: str = None) -> Dict[str, Any]:
+    """
+    Upload a file to Azure Blob Storage.
+    
+    Args:
+        file_content: The file content as bytes
+        blob_path: The path in the container where the file will be stored
+        content_type: The MIME type of the file
+        
+    Returns:
+        Dict containing upload result status and details
+    """
+    if not AZURE_CONNECTION_STRING:
+        logger.error("Azure Storage connection string not configured")
+        return {
+            "success": False,
+            "error": "Azure Storage not configured",
+            "message": "Azure Storage connection string is missing"
+        }
+    
+    blob_path = f"{email}/{filename}"
+
+    try:
+        # Initialize the BlobServiceClient
+        blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+
+        # Get a reference to the container
+        container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
+        # Ensure container exists
+
+        # Create a blob client for the specific path
+        blob_client = container_client.get_blob_client(blob_path)
+
+        # Set content type if provided
+        content_settings = None
+        if content_type:
+            content_settings = ContentSettings(content_type=content_type)
+
+        # Upload the file
+        blob_client.upload_blob(
+            file_content, 
+            overwrite=True,
+            content_settings=content_settings
+        )
+
+        logger.info("File uploaded successfully to %s", blob_path)
+    except AzureError as e:
+        logger.error("Azure error uploading file to %s: %s", blob_path, e)
+        raise e
+    except Exception as e:
+        logger.error("Unexpected error uploading file to %s: %s", blob_path, e)
+        raise e
