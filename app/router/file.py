@@ -38,12 +38,13 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
     task_states[task["id"]] = "Pending"
     upsert(email, task)
     if file.content_type == "application/pdf":
-        threading.Thread(target=load_pdf, args=(content, file.filename, email, task)).start()
+
+        threading.Thread(target=load_pdf, args=(content, file.filename, email, task, file.content_type)).start()
     elif file.content_type == \
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        threading.Thread(target=load_docx, args=(content, file.filename, email, task)).start()
+        threading.Thread(target=load_docx, args=(content, file.filename, email, task, file.content_type)).start()
     elif file.content_type in ["image/png", "image/jpeg"]:
-        threading.Thread(target=load_img, args=(content, file.filename, email, task)).start()
+        threading.Thread(target=load_img, args=(content, file.filename, email, task, file.content_type)).start()
     else:
         task["status"] = "failed"
         task_states[task["id"]] = "Failed"
@@ -52,4 +53,6 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
             status_code=400,
             detail="Invalid file type. Only PDF, TXT, and DOCX are allowed."
         )
+
     return JSONResponse(content=task)
+
