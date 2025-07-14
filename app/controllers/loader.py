@@ -29,6 +29,13 @@ text_splitter = RecursiveCharacterTextSplitter()
 AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
 AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
 
+
+class FileAlreadyExistsError(Exception):
+    """Custom exception raised when a file already exists in Azure Blob Storage."""
+    def __init__(self, filename: str):
+        self.filename = filename
+        super().__init__(f"A file with the name '{filename}' already exists. Please rename the file and try again.")
+
 class ExtractionResult(BaseModel):
     """
     ExtractionResult is a data model that represents the result of an extraction process.
@@ -161,9 +168,10 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict, content_type
                 metadata={"source": filename, "page": page_num + 1})
             documents.append(doc)
         os.remove(path)
-        upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
+        if os.path.exists(path):
+            os.remove(path)
         os.remove(path)
         task["status"] = "failed"
         upsert(email, task)
@@ -198,10 +206,9 @@ def load_img(content: bytes, filename: str, email: str, task: dict, content_type
         text = extract_text_from_image(Image.open(BytesIO(content)))
         doc = Document(page_content=text, metadata={"source": filename})
         documents.append(doc)
-        upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
-
     except (FileNotFoundError, ValueError, OSError) as e:
+        logger.error("Error processing image %s: . Error: %s", filename, e)
         task["status"] = "failed"
         upsert(email, task)
         task_states[task["id"]] = "Failed"
@@ -236,10 +243,10 @@ def load_docx(content: bytes, filename: str, email: str, task: dict, content_typ
             f.write(content)
         documents = Docx2txtLoader(file_path=path).load()
         os.remove(path)
-        upload_file_to_azure(content, filename, email, content_type)
         threading.Thread(target=upload, args=[documents, email, task]).start()
     except (FileNotFoundError, ValueError, OSError):
-        os.remove(path)
+        if os.path.exists(path):
+            os.remove(path)
         task["status"] = "failed"
         upsert(email, task)
         task_states[task["id"]] = "Failed"
@@ -329,10 +336,13 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
 
         # Get a reference to the container
         container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
-        # Ensure container exists
 
         # Create a blob client for the specific path
         blob_client = container_client.get_blob_client(blob_path)
+
+        if blob_client.exists():
+            logger.warning("File already exists at %s", blob_path)
+            raise FileAlreadyExistsError(filename)
 
         # Set content type if provided
         content_settings = None
@@ -347,6 +357,9 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
         )
 
         logger.info("File uploaded successfully to %s", blob_path)
+    except FileExistsError as e:
+        logger.error("File already exists at %s: %s" , blob_path, e)
+        raise e
     except AzureError as e:
         logger.error("Azure error uploading file to %s: %s", blob_path, e)
         raise e
