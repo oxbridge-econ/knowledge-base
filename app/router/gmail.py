@@ -216,3 +216,42 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
             filter=_filter, upper_bound=1000)
     }
     return JSONResponse(content=result, status_code=200)
+
+@router.delete("/query")
+def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONResponse:
+    """
+    Deletes a specific email query for a user from the MongoDB collection.
+
+    Args:
+        email (str): The email address, provided as a query parameter.
+        query_id (str): The ID of the query to be deleted, provided as a query parameter.
+
+    Returns:
+        JSONResponse: A JSON response indicating whether the deletion was successful or not.
+    """
+    #check if the user exists and has the query
+    user_doc = collection.find_one(
+        {"_id": email, "queries.id": query_id},
+        projection={"queries.$": 1}
+    )
+    if not user_doc:
+        # Check if user exists at all
+        user_exists = collection.find_one({"_id": email}, projection={"_id": 1})
+        if not user_exists:
+            return JSONResponse(
+                content={"error": "User not found."}, 
+                status_code=404
+            )
+        else:
+            return JSONResponse(
+                content={"error": f"Query with ID '{query_id}' not found."}, 
+                status_code=404
+            )
+    result = collection.update_one(
+        {"_id": email},
+        {"$pull": {"queries": {"id": query_id}}}
+    )
+    if result.modified_count > 0:
+        return JSONResponse(content={"status": "success"}, status_code=200)
+    else:
+        return JSONResponse(content={"error": "Failed to delete query"}, status_code=500)
