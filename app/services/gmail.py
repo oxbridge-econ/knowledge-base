@@ -127,7 +127,7 @@ class GmailService():
             - Only the most recent message from each thread is included in the results.
         """
         query = self._parse_query(query)
-        result = self.service.users().threads().list(
+        result = self.service.users().threads().list(  # pylint: disable=no-member
             userId='me', q=query, maxResults=max_results).execute()
         threads = []
         if "threads" in result:
@@ -135,14 +135,14 @@ class GmailService():
         while "nextPageToken" in result and check_next_page:
             page_token = result["nextPageToken"]
             result = (
-                self.service.users().threads().list(
+                self.service.users().threads().list(  # pylint: disable=no-member
                     userId="me", q=query, maxResults=max_results, pageToken=page_token).execute()
             )
             if "threads" in result:
                 threads.extend(result["threads"])
         messages = []
         for thread in threads:
-            thread_data = self.service.users().threads().get(userId='me', id=thread['id']).execute()
+            thread_data = self.service.users().threads().get(userId='me', id=thread['id']).execute()   # pylint: disable=no-member
             if thread_data.get('messages'):
                 latest_message = thread_data['messages'][-1]
                 messages.append(latest_message)
@@ -176,7 +176,7 @@ class GmailService():
         """
         emails = []
         for message in messages:
-            msg = self.service.users().messages().get(
+            msg = self.service.users().messages().get(  # pylint: disable=no-member
                     userId='me', id=message['id'], format='full').execute()
             headers = msg['payload']['headers']
             utc_dt = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
@@ -264,7 +264,7 @@ class GmailService():
         metadata["date"] = datetime.fromtimestamp(
             int(msg["internalDate"]) / 1000, tz=timezone.utc)
         metadata["lastModified"] = datetime.now(timezone.utc)
-        metadata["userId"] = self.service.users().getProfile(
+        metadata["userId"] = self.service.users().getProfile(  # pylint: disable=no-member
             userId="me").execute().get("emailAddress")
         return metadata
 
@@ -307,7 +307,7 @@ class GmailService():
                     attachment_id = part["body"]["attachmentId"]
                     logger.info("Downloading attachment: %s", part["filename"])
                     attachment = (
-                        self.service.users()
+                        self.service.users()  # pylint: disable=no-member
                         .messages()
                         .attachments()
                         .get(userId="me", messageId=message["id"], id=attachment_id)
@@ -424,7 +424,7 @@ class GmailService():
             documents = []
             for message in self._search(query, max_results=200, check_next_page=True):
                 logger.info("Processing message with ID: %s", message["id"])
-                msg = self.service.users().messages().get(
+                msg = self.service.users().messages().get(  # pylint: disable=no-member
                     userId="me", id=message["id"], format="full").execute()
                 metadata = self._get_metadata(msg)
                 documents = self._retrieve_content(msg, metadata, message)
