@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.schedulers import SchedulerNotRunningError
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,7 +44,7 @@ def load_and_schedule_jobs():
             try:
                 module = importlib.import_module(module_name)
                 func = getattr(module, function_name)
-            except Exception as e:
+            except (ImportError, AttributeError) as e:
                 logger.error("Failed to import %s: %s", job_config['func'], str(e))
                 continue
 
@@ -81,7 +82,7 @@ def load_and_schedule_jobs():
             )
 
             logger.info("Scheduled job: %s - Will run %s", job_config['id'], schedule_info)
-    except Exception as e:
+    except (FileNotFoundError, json.JSONDecodeError, ImportError, AttributeError) as e:
         logger.error("Error loading jobs: %s", str(e))
 
 
@@ -96,7 +97,7 @@ async def lifespan(_app: FastAPI):
         load_and_schedule_jobs()
         scheduler.start()
         logger.info("Gmail scheduler started successfully")
-    except Exception as e:
+    except (ValueError, ImportError, RuntimeError) as e:
         logger.error("Failed to start scheduler: %s", str(e))
 
     yield
@@ -106,8 +107,8 @@ async def lifespan(_app: FastAPI):
     try:
         scheduler.shutdown()
         logger.info("Scheduler shutdown successfully")
-    except Exception as e:
-        logger.error("Error shutting down scheduler: %s", str(e))
+    except SchedulerNotRunningError as e:
+        logger.error("Scheduler was not running: %s", str(e))
 
 
 app = FastAPI(docs_url="/", lifespan=lifespan)
