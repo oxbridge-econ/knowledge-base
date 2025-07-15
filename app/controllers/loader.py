@@ -6,7 +6,7 @@ import os
 from io import BytesIO
 import threading
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from venv import logger
 from PIL import Image
@@ -16,7 +16,7 @@ from langchain_core.documents import Document
 from pdf2image import convert_from_path
 from pydantic import BaseModel
 from pypdf import PdfReader
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import BlobServiceClient, ContentSettings, generate_blob_sas, BlobSasPermissions
 from azure.core.exceptions import AzureError
 
 from models.llm import client
@@ -365,4 +365,73 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
         raise e
     except Exception as e:
         logger.error("Unexpected error uploading file to %s: %s", blob_path, e)
+        raise e
+
+
+def get_files(email: str) -> List[Dict[str, Any]]:
+    """
+    Retrieves the list of files uploaded by the user from Azure Blob Storage.
+
+    Args:
+        email (str): The email of the user.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries containing file metadata.
+    """
+
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+        container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
+        blobs = container_client.list_blobs(name_starts_with=f"{email}/")
+
+        files = []
+        for blob in blobs:
+            # Generate a unique ID for the file
+            file_id = hashlib.sha256((email + blob.name).encode()).hexdigest()
+
+            # Generate download URL (SAS URL)
+            download_url = generate_download_url(blob.name, expiry_hours=8760)
+
+            files.append({
+                "id": file_id,
+                "filename": blob.name.split("/")[-1],
+                "createdAt": blob.last_modified.isoformat(),
+                "status": "uploaded",
+                "downloadUrl": download_url,
+            })
+        return files
+    except AzureError as e:
+        logger.error("Error retrieving files for %s: %s", email, e)
+        return []
+
+def generate_download_url(blob_path: str, expiry_hours: int = 1) -> str:
+    """
+    Generate a download URL (SAS URL) for a blob in Azure Storage.
+    
+    Args:
+        blob_path: The path to the blob in the container
+        expiry_hours: Number of hours the URL should be valid (default: 1)
+        
+    Returns:
+        str: The download URL with SAS token
+    """
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+
+        # Generate SAS token
+        sas_token = generate_blob_sas(
+            account_name=blob_service_client.account_name,
+            container_name=AZURE_CONTAINER_NAME,
+            blob_name=blob_path,
+            account_key=blob_service_client.credential.account_key,
+            permission=BlobSasPermissions(read=True),
+            expiry=datetime.now() + timedelta(hours=expiry_hours)
+        )
+
+        # Construct the full URL
+        blob_url = f"https://{blob_service_client.account_name}.blob.core.windows.net/{AZURE_CONTAINER_NAME}/{blob_path}?{sas_token}"
+        return blob_url
+
+    except Exception as e:
+        logger.error("Error generating download URL for %s: %s", blob_path, e)
         raise e
