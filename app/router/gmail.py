@@ -166,6 +166,9 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     queries = collection.find_one({"_id": email}, projection={"queries": 1})
     if queries:
         del queries["_id"]
+        if "queries" in queries:
+            for query in queries["queries"]:
+                query.pop("updatedTime", None)
     else:
         queries = []
     return JSONResponse(content=queries, status_code=200)
