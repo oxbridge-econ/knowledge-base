@@ -42,12 +42,18 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
         upload_file_to_azure(content, file.filename, email, file.content_type)
 
         if file.content_type == "application/pdf":
-            threading.Thread(target=load_pdf, args=(content, file.filename, email, task, file.content_type)).start()
+            threading.Thread(
+                target=load_pdf, args=(content, file.filename, email, task, file.content_type)
+                ).start()
         elif file.content_type == \
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            threading.Thread(target=load_docx, args=(content, file.filename, email, task, file.content_type)).start()
+            threading.Thread(
+                target=load_docx, args=(content, file.filename, email, task, file.content_type)
+                ).start()
         elif file.content_type in ["image/png", "image/jpeg"]:
-            threading.Thread(target=load_img, args=(content, file.filename, email, task, file.content_type)).start()
+            threading.Thread(
+                target=load_img, args=(content, file.filename, email, task, file.content_type)
+                ).start()
         else:
             task["status"] = "failed"
             task_states[task["id"]] = "Failed"
@@ -66,4 +72,3 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
         ) from e
 
     return JSONResponse(content=task)
-

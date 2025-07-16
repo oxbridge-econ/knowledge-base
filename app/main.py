@@ -182,9 +182,3 @@ async def get_tasks(task_type: str, email: str = Query(...)) -> JSONResponse:
     else:
         tasks = []
     return JSONResponse(content=tasks, status_code=200)
-
-
-@app.get("/debug/scheduler")
-async def debug_scheduler():
-    jobs = scheduler.get_jobs()
-    return {"running": scheduler.running, "jobs": [job.id for job in jobs]}
