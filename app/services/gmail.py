@@ -593,7 +593,6 @@ def trigger():
                     logger.info("Queries found for user: %s", record["_id"])
                     for query in record["queries"]:
                         if query["updatedTime"]:
-                        if query["updatedTime"]:
                             updated_time = query["updatedTime"]
                             date = updated_time.split(' ')[0]
                             query["after"] = date

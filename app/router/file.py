@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from fastapi.responses import JSONResponse
 from controllers.utils import upsert
 from controllers.loader import load_docx, load_pdf, load_img
-from controllers.loader import FileAlreadyExistsError,  upload_file_to_azure
+from controllers.loader import FileAlreadyExistsError,  upload_file_to_azure, get_files
 from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])
@@ -89,4 +89,3 @@ async def get_azure_files(email: str = Query(...)) -> JSONResponse:
         return JSONResponse(content=files)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-
