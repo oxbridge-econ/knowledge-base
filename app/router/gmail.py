@@ -163,11 +163,40 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     Returns:
         JSONResponse: A JSON response containing the user's email queries.
     """
-    queries = collection.find_one({"_id": email}, projection={"queries": 1})
-    if queries:
-        del queries["_id"]
-    else:
-        queries = []
+    # Define the required fields to include in the response
+    required_fields = [
+        "id", "subject", "from_email", "to_email", "cc_email", "has_words", 
+        "not_has_words", "before", "after", "max_results", "topics"
+    ]
+
+    pipeline = [
+        {"$match": {"_id": email}},
+        {"$project": {
+            "_id": 0,  # Exclude _id
+            "queries": {
+                "$map": {
+                    "input": "$queries",
+                    "as": "query",
+                    "in": {
+                        "$arrayToObject": {
+                            "$filter": {
+                                "input": {
+                                    "$objectToArray": "$$query"
+                                },
+                                "cond": {
+                                    "$in": ["$$this.k", required_fields]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }}
+    ]
+    queries = []
+    if collection.count_documents({"_id": email}) > 0:
+        result = list(collection.aggregate(pipeline))
+        queries = result[0] if result else {"queries": []}
     return JSONResponse(content=queries, status_code=200)
 
 @router.post("/docs")
