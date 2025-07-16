@@ -50,7 +50,7 @@ class VectorStore(AstraDBVectorStore):
             api_endpoint=os.environ["ASTRA_DB_API_ENDPOINT"],
             autodetect_collection=True)
 
-    def add_documents_with_retry(self, chunks, ids, email, task, max_retries=3):
+    def add_documents_with_retry(self, chunks, ids, task, max_retries=3):
         """
         Attempts to add documents to the vstore with a specified number of retries.
 
@@ -118,7 +118,7 @@ class VectorStore(AstraDBVectorStore):
             for index, chunk in enumerate(chunks):
                 _id = f"{chunk.metadata['id']}-{str(index)}"
                 ids.append(_id)
-            return self.add_documents_with_retry(chunks, ids, email, task)
+            return self.add_documents_with_retry(chunks, ids, task)
         except ValueError as e:
             logger.error("Error adding documents to vectorstore: %s", e)
             task["status"] = "failed"

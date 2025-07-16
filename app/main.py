@@ -44,7 +44,7 @@ def load_and_schedule_jobs():
             try:
                 module = importlib.import_module(module_name)
                 func = getattr(module, function_name)
-            except (ImportError, AttributeError) as e:
+            except (ImportError, AttributeError, ValueError) as e:
                 logger.error("Failed to import %s: %s", job_config['func'], str(e))
                 continue
 
@@ -82,7 +82,7 @@ def load_and_schedule_jobs():
             )
 
             logger.info("Scheduled job: %s - Will run %s", job_config['id'], schedule_info)
-    except (FileNotFoundError, json.JSONDecodeError, ImportError, AttributeError) as e:
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
         logger.error("Error loading jobs: %s", str(e))
 
 

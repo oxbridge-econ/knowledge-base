@@ -246,6 +246,56 @@ class GmailService():
             emails.append(email)
         return emails
 
+    def _check_relevance(self, documents: Document, topics: list[str]) -> list[Document]:
+        """
+        Checks the relevance of documents list using a detector and returns the relevant documents.
+
+        For each document, the detector is invoked to check its relevance.
+        If the verdict is positive, the document is considered relevant and added to the list.
+        If a RateLimitError occurs, the method retries up to a maximum number of times,
+        waiting between retries. If the maximum retries are reached or other exceptions
+        (ValueError, TypeError, KeyError) occur, the document is added to the result list.
+
+        Args:
+            documents (list[Document]): A list of Document objects to check for relevance.
+
+        Returns:
+            list[Document]:
+                A list of Document objects deemed relevant or added as fallback due to errors.
+        """
+        rel_documents = []
+        max_retries = 3
+        for document in documents:
+            for retry in range(max_retries):
+                try:
+                    is_relevant = detector.invoke(
+                        {"document": document, "topics": topics}
+                    ).model_dump()['verdict']
+                    if is_relevant:
+                        logger.info("Document %s is relevant to the topic.",
+                                    document.metadata["id"])
+                        rel_documents.append(document)
+                    else:
+                        logger.info("Document %s is not relevant to the topic.",
+                                    document.metadata["id"])
+                    break  # Success, exit retry loop
+                except RateLimitError:
+                    wait_time = 60
+                    logger.warning("Rate limit hit. Waiting %ds before retry %d/%d",
+                                   wait_time, retry+1, max_retries)
+                    if retry < max_retries - 1:
+                        time.sleep(wait_time)
+                    else:
+                        logger.error("Max retries reached for OpenAI API. Skipping document.")
+                        # Just add the document without checking relevance as fallback
+                        rel_documents.append(document)
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.error("Error checking document relevance: %s", str(e))
+                    # Add document anyway as fallback
+                    rel_documents.append(document)
+                    break
+        return rel_documents
+
     def _get_metadata(self, msg: dict) -> dict:
         metadata = {}
         metadata["threadId"] = msg["threadId"]
@@ -345,7 +395,12 @@ class GmailService():
                         for event in calendar.events:
                             documents.append(
                                 Document(
-                                    page_content=f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
+                                    page_content=(
+                                        f"Event: {event.name}\n"
+                                        f"Description: {event.description}\n"
+                                        f"Start: {event.begin}\n"
+                                        f"End: {event.end}"
+                                    ),
                                     metadata={
                                         "attachment": part["filename"],
                                         "mimeType": part["mimeType"],
@@ -356,7 +411,8 @@ class GmailService():
                                         ),
                                         "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
                                         "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "id": f"{msg_id}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}"
+                                        "id": (f"{msg_id}-{part['filename']}-"
+                                               f"{hashlib.sha256(file_data).hexdigest()}")
                                     }
                                 )
                             )
@@ -377,7 +433,8 @@ class GmailService():
                         }
                         document.metadata.update(metadata)
                         document.metadata["mimeType"] = part["mimeType"]
-                        document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
+                        file_hash = hashlib.sha256(file_data).hexdigest()
+                        document.metadata["id"] = f"{msg_id}-{file_hash}-{index}"
         elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             metadata["mimeType"] = msg["payload"]["mimeType"]
@@ -536,6 +593,7 @@ def trigger():
                     logger.info("Queries found for user: %s", record["_id"])
                     for query in record["queries"]:
                         if query["updatedTime"]:
+                        if query["updatedTime"]:
                             updated_time = query["updatedTime"]
                             date = updated_time.split(' ')[0]
                             query["after"] = date
@@ -554,12 +612,13 @@ def trigger():
                                 logger.info("Starting collection thread for task %s",
                                             service_instance.task["id"])
                                 service_instance.collect(query_param)
-                                logger.info("Collection completed for task %s",
-                                            service_instance.task["id"])
-                            except (ValueError, TypeError, KeyError) as e:
+                                logger.info("Collection completed for task %s", 
+                                          service_instance.task["id"])
+                            except Exception as e:
                                 logger.error(
                                     "Error in collect thread for task %s: %s",
-                                    service_instance.task["id"], str(e), exc_info=True)
+                                    service_instance.task["id"], str(e), exc_info=True
+                                )
                         # threading.Thread(target=service.collect, args=[query]).start()
                         # future = thread_pool.submit(collect_with_error_handling, service, query)
                         thread_pool.submit(collect_with_error_handling, service, query)
@@ -599,9 +658,12 @@ def retry_pending_tasks():
 
         # Process both collections
         for collection_name, task_collection in [
-            ("manual", manual_collection), ("cronjob", cronjob_collection)]:
-            logger.info("Processing %s collection for pending tasks older than 6 hours",
-                        collection_name)
+            ("manual", manual_collection), ("cronjob", cronjob_collection)
+        ]:
+            logger.info(
+                "Processing %s collection for pending tasks older than 6 hours",
+                collection_name
+            )
 
             # Find all records with pending tasks
             records = task_collection.find({
@@ -614,7 +676,10 @@ def retry_pending_tasks():
 
             for record in records:
                 user_email = record["_id"]
-                logger.info("Processing pending tasks for user: %s in %s collection", user_email, collection_name)
+                logger.info(
+                    "Processing pending tasks for user: %s in %s collection",
+                    user_email, collection_name
+                )
                 try:
                     # Get user credentials from gmail collection
                     user_creds = collection.find_one(
@@ -640,6 +705,7 @@ def retry_pending_tasks():
                         logger.error("Invalid or expired credentials for user: %s", user_email)
                         continue
 
+
                     # Process each pending task that is older than 6 hours
                     for task in record.get("tasks", []):
                         if task.get("status") == "pending" or task.get("status") == "in progress":
@@ -647,31 +713,35 @@ def retry_pending_tasks():
                             task_updated = task.get("updatedTime")
                             if not task_updated:
                                 logger.warning(
-                                    "Task without updated time found for user: %s",
-                                    user_email)
+                                    "Task without updated time found for user: %s", user_email
+                                )
                                 continue
 
                             # Parse the date format: 2025/07/08 07:39:40
                             try:
                                 if isinstance(task_updated, str):
                                     # Parse the specific format: YYYY/MM/DD HH:MM:SS
-                                    task_updated_dt = datetime.strptime(task_updated, "%Y/%m/%d %H:%M:%S")
+                                    task_updated_dt = datetime.strptime(
+                                        task_updated, "%Y/%m/%d %H:%M:%S"
+                                    )
                                     # Assume UTC timezone if not specified
                                     task_updated_dt = task_updated_dt.replace(tzinfo=timezone.utc)
                                 elif isinstance(task_updated, datetime):
                                     task_updated_dt = task_updated
                                     # Ensure timezone awareness
                                     if task_updated_dt.tzinfo is None:
-                                        task_updated_dt = task_updated_dt.replace(tzinfo=timezone.utc)
+                                        task_updated_dt = task_updated_dt.replace(
+                                            tzinfo=timezone.utc
+                                        )
                                 else:
                                     logger.warning(
-                                        "Unknown updated time format for task: %s",
-                                        task.get("id"))
+                                        "Unknown updated time format for task: %s", task.get("id")
+                                    )
                                     continue
                             except ValueError as e:
                                 logger.warning(
-                                    "Invalid updated time format for task %s: %s",
-                                    task.get("id"), e)
+                                    "Invalid updated time format for task %s: %s", task.get("id"), e
+                                )
                                 continue
 
                             # Check if task is older than 6 hours
@@ -690,12 +760,14 @@ def retry_pending_tasks():
                             if not query:
                                 logger.warning(
                                     "Task without query found for user: %s, task ID: %s",
-                                    user_email, task_id)
+                                    user_email, task_id
+                                )
                                 continue
 
                             logger.info(
                                 "Retrying pending task: %s for user: %s (pending since: %s)",
-                                task_id, user_email, task_updated_dt)
+                                task_id, user_email, task_updated_dt
+                            )
                             # Create task object for GmailService
                             gmail_task = {
                                 "id": task_id,
@@ -709,28 +781,34 @@ def retry_pending_tasks():
 
                             # Submit to thread pool with error handling
                             def collect_with_error_handling(
-                                    service_instance, query_param, _, task_id_param):
+                                    service_instance, query_param, task_id_param
+                                ):
                                 try:
                                     logger.info(
                                         "Starting retry collection thread for task %s",
-                                        task_id_param)
+                                        task_id_param
+                                    )
                                     service_instance.collect(query_param)
                                     logger.info(
-                                        "Retry collection completed for task %s", task_id_param)
+                                        "Retry collection completed for task %s", 
+                                        task_id_param
+                                    )
                                     # Update global task states
                                     task_states[task_id_param] = "Completed"
 
                                 except (ValueError, TypeError, KeyError) as e:
                                     logger.error("Error in retry collect thread for task %s: %s",
                                                task_id_param, str(e), exc_info=True)
+
                                     # Update global task states
                                     task_states[task_id_param] = "Failed"
 
                             # Submit task to thread pool
-                            thread_pool.submit(
+                            future = thread_pool.submit(
                                 collect_with_error_handling,
                                 service,
                                 query,  # Use the query from the task object
+                                task_collection,
                                 task_collection,
                                 task_id
                             )

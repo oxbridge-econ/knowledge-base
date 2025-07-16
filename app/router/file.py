@@ -4,7 +4,8 @@ import threading
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from fastapi.responses import JSONResponse
 from controllers.utils import upsert
-from controllers.loader import load_docx, load_pdf, load_img, FileAlreadyExistsError,  upload_file_to_azure, get_files
+from controllers.loader import load_docx, load_pdf, load_img
+from controllers.loader import FileAlreadyExistsError,  upload_file_to_azure
 from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])

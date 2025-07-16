@@ -5,9 +5,8 @@ import json
 import os
 from io import BytesIO
 import threading
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from datetime import datetime
+from typing import Dict, Any
 from venv import logger
 from PIL import Image
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -34,7 +33,9 @@ class FileAlreadyExistsError(Exception):
     """Custom exception raised when a file already exists in Azure Blob Storage."""
     def __init__(self, filename: str):
         self.filename = filename
-        super().__init__(f"A file with the name '{filename}' already exists. Please rename the file and try again.")
+        super().__init__(
+        f"A file with the name '{filename}' already exists. Please rename the file and try again."
+        )
 
 class ExtractionResult(BaseModel):
     """
@@ -117,7 +118,7 @@ def extract_text_from_image(image):
     )
     return json.loads(response.choices[0].message.content)["content"]
 
-def load_pdf(content: bytes, filename: str, email: str, task: dict, content_type: str):
+def load_pdf(content: bytes, filename: str, email: str, task: dict):
     """
     Loads and processes PDF files from a specified directory.
 
@@ -176,12 +177,12 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict, content_type
         task["status"] = "failed"
         upsert(email, task)
         task_states[task["id"]] = "Failed"
-    
+
     task["status"] = "completed"
     upsert(email, task)
     task_states[task["id"]] = "Completed"
 
-def load_img(content: bytes, filename: str, email: str, task: dict, content_type: str):
+def load_img(content: bytes, filename: str, email: str, task: dict):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
@@ -217,7 +218,7 @@ def load_img(content: bytes, filename: str, email: str, task: dict, content_type
     task_states[task["id"]] = "Completed"
 
 
-def load_docx(content: bytes, filename: str, email: str, task: dict, content_type: str):
+def load_docx(content: bytes, filename: str, email: str, task: dict):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
@@ -308,7 +309,10 @@ def upload(docs: list[Document], email: str, task: dict):
 
 
 
-def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_type: str = None) -> Dict[str, Any]:
+def upload_file_to_azure(
+        file_content: bytes, filename: str, email:str,
+        content_type: str = None
+    ) -> Dict[str, Any]:
     """
     Upload a file to Azure Blob Storage.
     
@@ -327,7 +331,7 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
             "error": "Azure Storage not configured",
             "message": "Azure Storage connection string is missing"
         }
-    
+
     blob_path = f"{email}/{filename}"
 
     try:
@@ -351,7 +355,7 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
 
         # Upload the file
         blob_client.upload_blob(
-            file_content, 
+            file_content,
             overwrite=True,
             content_settings=content_settings
         )
