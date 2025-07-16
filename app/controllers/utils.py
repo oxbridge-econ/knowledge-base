@@ -1,6 +1,62 @@
 """Module for utility functions related to MongoDB operations."""
+import time
+from venv import logger
 from datetime import datetime
+from langchain_core.documents import Document
+from openai import RateLimitError
+
 from models.db import MongodbClient
+from controllers.topic import detector
+
+def check_relevance(documents: Document, topics: list[str]) -> list[Document]:
+    """
+    Checks the relevance of documents list using a detector and returns the relevant documents.
+
+    For each document, the detector is invoked to check its relevance.
+    If the verdict is positive, the document is considered relevant and added to the list.
+    If a RateLimitError occurs, the method retries up to a maximum number of times,
+    waiting between retries. If the maximum retries are reached or other exceptions
+    (ValueError, TypeError, KeyError) occur, the document is added to the result list.
+
+    Args:
+        documents (list[Document]): A list of Document objects to check for relevance.
+
+    Returns:
+        list[Document]:
+            A list of Document objects deemed relevant or added as fallback due to errors.
+    """
+    rel_documents = []
+    max_retries = 3
+    for document in documents:
+        for retry in range(max_retries):
+            try:
+                is_relevant = detector.invoke(
+                    {"document": document, "topics": topics}).model_dump()['verdict']
+                if is_relevant:
+                    logger.info("Document %s is relevant to the topic.",
+                                document.metadata["id"])
+                    rel_documents.append(document)
+                else:
+                    logger.info("Document %s is not relevant to the topic.",
+                                document.metadata["id"])
+                break  # Success, exit retry loop
+            except RateLimitError:
+                wait_time = 60
+                logger.warning("Rate limit hit. Waiting %ds before retry %d/%d",
+                                wait_time, retry+1, max_retries)
+                if retry < max_retries - 1:
+                    time.sleep(wait_time)
+                else:
+                    logger.error("Max retries reached for OpenAI API. Skipping document.")
+                    # Just add the document without checking relevance as fallback
+                    rel_documents.append(document)
+            except (ValueError, TypeError, KeyError) as e:
+                logger.error("Error checking document relevance: %s", str(e))
+                # Add document anyway as fallback
+                rel_documents.append(document)
+                break
+    return rel_documents
+
 
 def upsert(
     _id,
@@ -8,7 +64,7 @@ def upsert(
     *,
     collection=None,
     db="task",
-    size: int = 10,
+    size: int = 100,
     field="tasks"
 ):
     """

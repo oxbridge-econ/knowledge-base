@@ -4,7 +4,7 @@ import threading
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from fastapi.responses import JSONResponse
 from controllers.utils import upsert
-from controllers.loader import load_docx, load_pdf, load_img, FileAlreadyExistsError,  upload_file_to_azure
+from controllers.loader import load_docx, load_pdf, load_img, FileAlreadyExistsError,  upload_file_to_azure, get_files
 from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])
@@ -38,8 +38,6 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
     task_states[task["id"]] = "Pending"
     upsert(email, task)
     try:
-        #check if file already exists
-        upload_file_to_azure(content, file.filename, email, file.content_type)
 
         if file.content_type == "application/pdf":
             threading.Thread(
@@ -62,6 +60,7 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
                 status_code=400,
                 detail="Invalid file type. Only PDF, TXT, and DOCX are allowed."
             )
+        upload_file_to_azure(content, file.filename, email, file.content_type)
     except FileAlreadyExistsError as e:
         task["status"] = "failed"
         task_states[task["id"]] = "Failed"
@@ -72,3 +71,21 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
         ) from e
 
     return JSONResponse(content=task)
+
+@router.get("")
+async def get_azure_files(email: str = Query(...)) -> JSONResponse:
+    """
+    Retrieves the list of files uploaded by the user.
+
+    Args:
+        email (str): The email of the user.
+
+    Returns:
+        JSONResponse: A response containing the list of files.
+    """
+    try:
+        files = get_files(email)
+        return JSONResponse(content=files)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+

@@ -28,14 +28,14 @@ class EmailFilter(BaseModel):
     from_email: Optional[str] = Field(None, alias="from")
     to_email: Optional[str] = Field(None, alias="to")
     cc_email: Optional[str] = Field(None, alias="cc")
-    has_words: Optional[str] = None
-    not_has_words: Optional[str] = None
+    has_words: Optional[str] = Field(None, alias="keywords")
+    not_has_words: Optional[str] = Field(None, alias="excludeKeywords")
     # size: Optional[int] = None
     before: Optional[str] = None
     after: Optional[str] = None
     max_results: Optional[int] = Field(10, alias="maxResults")
-    topic_detect: Optional[bool] = False
-    topics: Optional[List[str]] = ["Finance", "Economy", "AI", "IT", "Politics"]
+    # topic_detect: Optional[bool] = False
+    topics: Optional[List[str]] = []
 
     @classmethod
     def validate_before_after(
