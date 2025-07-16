@@ -345,7 +345,10 @@ class GmailService():
                         for event in calendar.events:
                             documents.append(
                                 Document(
-                                    page_content=f"Event: {event.name}\nDescription: {event.description}\nStart: {event.begin}\nEnd: {event.end}",
+                                    page_content=(f"Event: {event.name}\n"
+                                    f"Description: {event.description}\n"
+                                    f"Start: {event.begin}\n"
+                                    f"End: {event.end}"),
                                     metadata={
                                         "attachment": part["filename"],
                                         "mimeType": part["mimeType"],
@@ -356,7 +359,8 @@ class GmailService():
                                         ),
                                         "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
                                         "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "id": f"{msg_id}-{part['filename']}-{hashlib.sha256(file_data).hexdigest()}"
+                                        "id": (f"{msg_id}-{part['filename']}-"
+                                        f"{hashlib.sha256(file_data).hexdigest()}")
                                     }
                                 )
                             )
@@ -377,7 +381,8 @@ class GmailService():
                         }
                         document.metadata.update(metadata)
                         document.metadata["mimeType"] = part["mimeType"]
-                        document.metadata["id"] = f"{msg_id}-{hashlib.sha256(file_data).hexdigest()}-{index}"
+                        document.metadata["id"] = (f"{msg_id}-"
+                        f"{hashlib.sha256(file_data).hexdigest()}-{index}")
         elif msg["payload"]["mimeType"] == "text/plain" and "data" in msg["payload"]["body"]:
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode("utf-8")
             metadata["mimeType"] = msg["payload"]["mimeType"]
@@ -446,16 +451,25 @@ class GmailService():
                             result.deleted_count, msg["threadId"])
                         vstore.upload(self.email, documents, self.task)
                         logger.info("✅ Vector store upload successful for task %s", self.task["id"])
-                    except Exception as upload_error:
-                        logger.error("💥 Vector store upload failed for task %s: %s",
+                    except (ConnectionError, TimeoutError) as upload_error:
+                        logger.error(" Vector store upload failed for task %s: %s",
                                 self.task["id"], str(upload_error))
+                        raise upload_error
+                    except (ValueError, TypeError) as upload_error:
+                        logger.error(" Data validation error during vector store upload for task"
+                        "%s: %s", self.task["id"], str(upload_error))
+                        raise upload_error
+                    except (OSError, IOError) as upload_error:
+                        logger.error(" File system error during vector store upload for task "
+                        "%s: %s",self.task["id"], str(upload_error))
                         raise upload_error
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             task_states[self.task["id"]] = "Completed"
             upsert(self.email, self.task)
             logger.info("✅ Collection completed for task %s", self.task["id"])
-        except Exception as e:
+        except (ValueError, TypeError, KeyError,
+                IndexError, ConnectionError, TimeoutError, OSError, IOError) as e:
             logger.error("💥 Error in collect for task %s: %s",
                          self.task["id"], str(e), exc_info=True)
             # Mark task as failed
@@ -614,7 +628,8 @@ def retry_pending_tasks():
 
             for record in records:
                 user_email = record["_id"]
-                logger.info("Processing pending tasks for user: %s in %s collection", user_email, collection_name)
+                logger.info("Processing pending tasks for user: "
+                "%s in %s collection", user_email, collection_name)
                 try:
                     # Get user credentials from gmail collection
                     user_creds = collection.find_one(
@@ -655,14 +670,18 @@ def retry_pending_tasks():
                             try:
                                 if isinstance(task_updated, str):
                                     # Parse the specific format: YYYY/MM/DD HH:MM:SS
-                                    task_updated_dt = datetime.strptime(task_updated, "%Y/%m/%d %H:%M:%S")
+                                    task_updated_dt = datetime.strptime(
+                                        task_updated, "%Y/%m/%d %H:%M:%S"
+                                    )
                                     # Assume UTC timezone if not specified
                                     task_updated_dt = task_updated_dt.replace(tzinfo=timezone.utc)
                                 elif isinstance(task_updated, datetime):
                                     task_updated_dt = task_updated
                                     # Ensure timezone awareness
                                     if task_updated_dt.tzinfo is None:
-                                        task_updated_dt = task_updated_dt.replace(tzinfo=timezone.utc)
+                                        task_updated_dt = task_updated_dt.replace(
+                                            tzinfo=timezone.utc
+                                        )
                                 else:
                                     logger.warning(
                                         "Unknown updated time format for task: %s",
