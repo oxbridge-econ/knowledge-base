@@ -64,7 +64,7 @@ def upsert(
     *,
     collection=None,
     db="task",
-    size: int = 10,
+    size: int = 100,
     field="tasks"
 ):
     """

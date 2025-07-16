@@ -239,12 +239,12 @@ def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRes
         user_exists = collection.find_one({"_id": email}, projection={"_id": 1})
         if not user_exists:
             return JSONResponse(
-                content={"error": "User not found."}, 
+                content={"error": "User not found."},
                 status_code=404
             )
         else:
             return JSONResponse(
-                content={"error": f"Query with ID '{query_id}' not found."}, 
+                content={"error": f"Query with ID '{query_id}' not found."},
                 status_code=404
             )
     result = collection.update_one(
@@ -255,3 +255,69 @@ def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRes
         return JSONResponse(content={"status": "success"}, status_code=200)
     else:
         return JSONResponse(content={"error": "Failed to delete query"}, status_code=500)
+
+@router.post("/query")
+def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
+    """
+    Collects Gmail data for a specified user and initiates an asynchronous collection task.
+
+    Args:
+        body (EmailQuery): The query parameters for the email collection.
+        email (str, optional): The user's email address, provided as a query parameter.
+
+    Returns:
+        JSONResponse: 
+            - If the user is not found, returns a 404 error with an appropriate message.
+            - If the user's credentials are invalid or expired, returns a 401 error.
+            - Otherwise, starts a background thread to collect emails,
+              updates the user's query in the database,
+              and returns a JSON response containing the task ID and its initial status.
+
+    Raises:
+        None
+
+    Side Effects:
+        - Starts a background thread for email collection.
+        - Updates or inserts the user's query parameters in the MongoDB collection.
+        - Modifies the global `task_states` dictionary with the new task's status.
+    """
+    cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
+    if cred_dict is None:
+        return JSONResponse(content={"error": "User not found."}, status_code=404)
+    credentials = Credentials(
+        token=cred_dict["token"],
+        refresh_token=cred_dict["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ.get("CLIENT_ID"),
+        client_secret=os.environ.get("CLIENT_SECRET"),
+        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+    )
+    if not credentials.valid or credentials.expired:
+        return JSONResponse(content={"valid": False,
+                                     "error": "Invalid or expired credentials."}, status_code=401)
+    body = body.model_dump()
+    query = {k: v for k, v in body.items() if v is not None}
+    task = {
+        "id": f"{str(uuid.uuid4())}",
+        "status": "pending",
+        "service": "gmail",
+        "type": "manual",
+        "query": query
+    }
+    service = GmailService(credentials, email, task)
+    threading.Thread(target=service.collect, args=[query]).start()
+    del query["max_results"]
+    data = {
+        "_id": email,
+        "query": query
+    }
+    collection.update_one(
+        { '_id': email },
+        { '$set': data },
+        upsert=True
+    )
+    query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
+    upsert(email, task)
+    task_states[task["id"]] = "Pending"
+    upsert(email, query, collection=collection, size=10, field="queries")
+    return JSONResponse(content=task)
