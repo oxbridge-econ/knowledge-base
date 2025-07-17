@@ -210,7 +210,7 @@ class GmailService():
                         email['content'] = content
                         email['mimeType'] = part['mimeType']
                         break
-                    elif part['mimeType'] == 'text/html':
+                    if part['mimeType'] == 'text/html':
                         content = base64.urlsafe_b64decode(
                             part['body']['data']).decode('utf-8')
                         if content == "":
@@ -218,7 +218,7 @@ class GmailService():
                         email['content'] = content
                         email['mimeType'] = part['mimeType']
                         break
-                    elif part['mimeType'] == "multipart/alternative":
+                    if part['mimeType'] == "multipart/alternative":
                         for subpart in part['parts']:
                             if subpart['mimeType'] == 'text/plain':
                                 content = base64.urlsafe_b64decode(
@@ -228,7 +228,7 @@ class GmailService():
                                 email['content'] = content
                                 email['mimeType'] = subpart['mimeType']
                                 break
-                            elif subpart['mimeType'] == 'text/html':
+                            if subpart['mimeType'] == 'text/html':
                                 content = base64.urlsafe_b64decode(
                                     subpart['body']['data']).decode('utf-8')
                                 if content == "":
@@ -449,7 +449,7 @@ class GmailService():
                         logger.info(
                             "Deleted historical %d documents for thread %s to avoid duplication",
                             result.deleted_count, msg["threadId"])
-                        vstore.upload(self.email, documents, self.task)
+                        vstore.upload(documents, self.task)
                         logger.info("✅ Vector store upload successful for task %s", self.task["id"])
                     except (ConnectionError, TimeoutError) as upload_error:
                         logger.error(" Vector store upload failed for task %s: %s",

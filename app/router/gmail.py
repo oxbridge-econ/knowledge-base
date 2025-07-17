@@ -5,7 +5,6 @@ import uuid
 from google.oauth2.credentials import Credentials
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-
 from astrapy.constants import SortMode
 from services import GmailService
 from schema import EmailFilter, DocsReq, task_states
@@ -271,19 +270,17 @@ def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRes
                 content={"error": "User not found."},
                 status_code=404
             )
-        else:
-            return JSONResponse(
-                content={"error": f"Query with ID '{query_id}' not found."},
-                status_code=404
-            )
+        return JSONResponse(
+            content={"error": f"Query with ID '{query_id}' not found."},
+            status_code=404
+        )
     result = collection.update_one(
         {"_id": email},
         {"$pull": {"queries": {"id": query_id}}}
     )
     if result.modified_count > 0:
         return JSONResponse(content={"status": "success"}, status_code=200)
-    else:
-        return JSONResponse(content={"error": "Failed to delete query"}, status_code=500)
+    return JSONResponse(content={"error": "Failed to delete query"}, status_code=500)
 
 @router.post("/query")
 def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:

@@ -5,7 +5,6 @@ import json
 import os
 from io import BytesIO
 import threading
-from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from venv import logger
@@ -309,7 +308,7 @@ def upload(docs: list[Document], email: str, task: dict):
             else:
                 ids.append(f"{document.metadata['id']}-{index}")
             documents.append(document)
-    vstore.add_documents_with_retry(documents, ids, email, task)
+    vstore.add_documents_with_retry(documents, ids, task)
 
 
 
@@ -328,13 +327,6 @@ def upload_file_to_azure(
     Returns:
         Dict containing upload result status and details
     """
-    if not AZURE_CONNECTION_STRING:
-        logger.error("Azure Storage connection string not configured")
-        return {
-            "success": False,
-            "error": "Azure Storage not configured",
-            "message": "Azure Storage connection string is missing"
-        }
 
     blob_path = f"{email}/{filename}"
 
@@ -358,7 +350,7 @@ def upload_file_to_azure(
             content_settings = ContentSettings(content_type=content_type)
         # Upload the file
         blob_client.upload_blob(
-            file_content, 
+            file_content,
             overwrite=True,
             content_settings=content_settings
         )
@@ -493,7 +485,7 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
                        result.deleted_count, file_name, email)
 
         except (ConnectionError, TimeoutError, ValueError) as vdb_error:
-            logger.error("Error deleting from vector DB for file %s: %s", file_name, vdb_error)       
+            logger.error("Error deleting from vector DB for file %s: %s", file_name, vdb_error)
 
         return {
             "success": True, 

@@ -47,8 +47,8 @@ def process():
         if "before" in record["query"]:
             if record["query"]["before"] <= current_date:
                 continue
-            else:
-                record["query"]["after"] = current_date
+
+            record["query"]["after"] = current_date
         collection.update_one(
             {"_id": record["_id"]},
             {"$set": {"lastCollectDate": current_date, "task_id": task_id}},
