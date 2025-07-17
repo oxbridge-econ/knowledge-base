@@ -16,7 +16,9 @@ from langchain_core.documents import Document
 from pdf2image import convert_from_path
 from pydantic import BaseModel
 from pypdf import PdfReader
-from azure.storage.blob import BlobServiceClient, ContentSettings, generate_blob_sas, BlobSasPermissions
+from azure.storage.blob import (
+     BlobServiceClient, ContentSettings,
+    generate_blob_sas, BlobSasPermissions)
 from azure.core.exceptions import AzureError
 
 from models.llm import client
@@ -34,7 +36,10 @@ class FileAlreadyExistsError(Exception):
     """Custom exception raised when a file already exists in Azure Blob Storage."""
     def __init__(self, filename: str):
         self.filename = filename
-        super().__init__(f"A file with the name '{filename}' already exists. Please rename the file and try again.")
+        super().__init__(
+            f"A file with the name '{filename}' "
+            f"already exists. Please rename the file and try again."
+        )
 
 class ExtractionResult(BaseModel):
     """
@@ -117,7 +122,7 @@ def extract_text_from_image(image):
     )
     return json.loads(response.choices[0].message.content)["content"]
 
-def load_pdf(content: bytes, filename: str, email: str, task: dict, content_type: str):
+def load_pdf(content: bytes, filename: str, email: str, task: dict):
     """
     Loads and processes PDF files from a specified directory.
 
@@ -181,7 +186,7 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict, content_type
     upsert(email, task)
     task_states[task["id"]] = "Completed"
 
-def load_img(content: bytes, filename: str, email: str, task: dict, content_type: str):
+def load_img(content: bytes, filename: str, email: str, task: dict,):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
@@ -217,7 +222,7 @@ def load_img(content: bytes, filename: str, email: str, task: dict, content_type
     task_states[task["id"]] = "Completed"
 
 
-def load_docx(content: bytes, filename: str, email: str, task: dict, content_type: str):
+def load_docx(content: bytes, filename: str, email: str, task: dict,):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
@@ -429,7 +434,11 @@ def generate_download_url(blob_path: str, expiry_hours: int = 1) -> str:
         )
 
         # Construct the full URL
-        blob_url = f"https://{blob_service_client.account_name}.blob.core.windows.net/{AZURE_CONTAINER_NAME}/{blob_path}?{sas_token}"
+        blob_url = (
+            f"https://{blob_service_client.account_name}."
+            f"blob.core.windows.net/{AZURE_CONTAINER_NAME}/"
+            f"{blob_path}?{sas_token}"
+        )
         return blob_url
 
     except Exception as e:
