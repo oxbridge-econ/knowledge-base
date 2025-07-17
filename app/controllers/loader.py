@@ -487,7 +487,7 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
                 ]
             })
 
-            logger.info("Deleted %d document chunks from vector DB for file %s, user %s", 
+            logger.info("Deleted %d document chunks from vector DB for file %s, user %s",
                        result.deleted_count, file_name, email)
 
         except Exception as vdb_error:
@@ -496,7 +496,9 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
 
         return {
             "success": True, 
-            "message": f"File '{file_name}' deleted successfully from Azure Storage and vector database."
+            "message": (f"File '{file_name}' deleted successfully"
+                        f" from Azure Storage and vector database."
+                    )
         }
     except AzureError as e:
         logger.error("Error deleting file %s: %s", file_name, e)

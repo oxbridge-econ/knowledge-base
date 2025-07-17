@@ -9,7 +9,7 @@ from controllers.loader import (
     load_docx, load_pdf,
     load_img,
     FileAlreadyExistsError,
-    upload_file_to_azure, get_files)
+    upload_file_to_azure, get_files, delete_file)
 from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])
@@ -125,4 +125,3 @@ async def delete(email: str = Query(...), file_name: str = Query(...),) -> JSONR
     except Exception as e:
         logger.error("Error in delete endpoint: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
-
