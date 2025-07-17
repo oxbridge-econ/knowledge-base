@@ -20,7 +20,7 @@ logging.basicConfig(
 logging.getLogger().setLevel(logging.INFO)
 app = FastAPI(docs_url="/")
 
-class Config:
+class Config: # pylint: disable=too-few-public-methods
     """
     Config class for application settings.
 
@@ -109,7 +109,6 @@ async def lifespan(_app: FastAPI):
         logger.info("Scheduler shutdown successfully")
     except SchedulerNotRunningError as e:
         logger.error("Scheduler was not running: %s", str(e))
-
 
 app = FastAPI(docs_url="/", lifespan=lifespan)
 

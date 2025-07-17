@@ -83,6 +83,7 @@ class VectorStore(AstraDBVectorStore):
                     # upsert(email, task)
                     # task_states[task["id"]] = "Failed"
                     raise e
+        return False
 
 
     def upload(self, documents, task):

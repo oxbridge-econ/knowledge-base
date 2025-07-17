@@ -1,8 +1,9 @@
 """Module for topic detection."""
-from models.llm import GPTModel
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
 from pydantic import BaseModel, Field
+
+from models.llm import GPTModel
 
 class Result(BaseModel):
     """
