@@ -1,5 +1,5 @@
 # Use the official Python 3.10.9 image
-FROM python:3.13.3-slim
+FROM python:3.13.3
 
 # Copy the current directory contents into the container at /app
 COPY . .
