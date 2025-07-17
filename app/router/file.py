@@ -116,11 +116,10 @@ async def delete(email: str = Query(...), file_name: str = Query(...),) -> JSONR
                 status_code=200,
                 content=result
             )
-        else:
-            return JSONResponse(
-                status_code=404 if "not found" in result["error"].lower() else 500,
-                content=result
-            )
+        return JSONResponse(
+            status_code=404 if "not found" in result["error"].lower() else 500,
+            content=result
+        )
 
     except Exception as e:
         logger.error("Error in delete endpoint: %s", e)

@@ -148,6 +148,72 @@ class GmailService():
                 messages.append(latest_message)
         return messages
 
+    def _create_email_base_structure(self, msg: dict, hkt_dt: datetime) -> dict:
+        """Creates the base email structure with default values."""
+        return {
+            'subject': '',
+            'from': '',
+            'to': '',
+            'cc': '',
+            'content': '',
+            'snippet': msg['snippet'] if 'snippet' in msg else '',
+            "datetime": hkt_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    def _extract_headers(self, email: dict, headers: list) -> None:
+        """Extracts header information from email headers."""
+        for header in headers:
+            name = header['name'].lower()
+            if name == 'subject':
+                email['subject'] = header['value']
+            elif name == 'from':
+                email['from'] = header['value']
+            elif name == 'to':
+                email['to'] = header['value']
+            elif name == 'cc':
+                email['cc'] = header['value']
+
+    def _try_extract_text_content(self, email: dict, part: dict) -> bool:
+        """Tries to extract text content from a part. Returns True if content was extracted."""
+        if part['mimeType'] == 'text/plain':
+            content = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+            if content:
+                email['content'] = content
+                email['mimeType'] = part['mimeType']
+                return True
+        elif part['mimeType'] == 'text/html':
+            content = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+            if content:
+                email['content'] = content
+                email['mimeType'] = part['mimeType']
+                return True
+        return False
+
+    def _extract_content_from_multipart_alternative(self, email: dict, subparts: list) -> None:
+        """Extracts content from multipart/alternative subparts."""
+        for subpart in subparts:
+            if self._try_extract_text_content(email, subpart):
+                break
+
+    def _extract_content_from_parts(self, email: dict, parts: list) -> None:
+        """Extracts content from email parts."""
+        for part in parts:
+            if self._try_extract_text_content(email, part):
+                break
+            if part['mimeType'] == "multipart/alternative":
+                self._extract_content_from_multipart_alternative(email, part['parts'])
+
+    def _extract_email_content(self, email: dict, msg: dict) -> None:
+        """Extracts content from email message."""
+        if 'parts' in msg['payload']:
+            self._extract_content_from_parts(email, msg['payload']['parts'])
+        elif 'data' in msg['payload']['body']:
+            email['mimeType'] = msg['payload']['mimeType']
+            content = base64.urlsafe_b64decode(
+                msg['payload']['body']['data']).decode('utf-8')
+            if content:
+                email['content'] = content
+
     def _get_email_by_messages(self, messages: list[dict]) -> dict:
         """
         Fetches and parses email messages from the Gmail API,
@@ -181,68 +247,9 @@ class GmailService():
             headers = msg['payload']['headers']
             utc_dt = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
             hkt_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
-            email = {
-                'subject': '',
-                'from': '',
-                'to': '',
-                'cc': '',
-                'content': '',
-                'snippet': msg['snippet'] if 'snippet' in msg else '',
-                "datetime": hkt_dt.strftime("%Y-%m-%d %H:%M:%S"),
-            }
-            for header in headers:
-                name = header['name'].lower()
-                if name == 'subject':
-                    email['subject'] = header['value']
-                elif name == 'from':
-                    email['from'] = header['value']
-                elif name == 'to':
-                    email['to'] = header['value']
-                elif name == 'cc':
-                    email['cc'] = header['value']
-            if 'parts' in msg['payload']:
-                for part in msg['payload']['parts']:
-                    if part['mimeType'] == 'text/plain':
-                        content = base64.urlsafe_b64decode(
-                            part['body']['data']).decode('utf-8')
-                        if content == "":
-                            continue
-                        email['content'] = content
-                        email['mimeType'] = part['mimeType']
-                        break
-                    elif part['mimeType'] == 'text/html':
-                        content = base64.urlsafe_b64decode(
-                            part['body']['data']).decode('utf-8')
-                        if content == "":
-                            continue
-                        email['content'] = content
-                        email['mimeType'] = part['mimeType']
-                        break
-                    elif part['mimeType'] == "multipart/alternative":
-                        for subpart in part['parts']:
-                            if subpart['mimeType'] == 'text/plain':
-                                content = base64.urlsafe_b64decode(
-                                    subpart['body']['data']).decode('utf-8')
-                                if content == "":
-                                    continue
-                                email['content'] = content
-                                email['mimeType'] = subpart['mimeType']
-                                break
-                            elif subpart['mimeType'] == 'text/html':
-                                content = base64.urlsafe_b64decode(
-                                    subpart['body']['data']).decode('utf-8')
-                                if content == "":
-                                    continue
-                                email['content'] = content
-                                email['mimeType'] = subpart['mimeType']
-                                break
-            elif 'data' in msg['payload']['body']:
-                email['mimeType'] = msg['payload']['mimeType']
-                content = base64.urlsafe_b64decode(
-                    msg['payload']['body']['data']).decode('utf-8')
-                if content == "":
-                    continue
-                email['content'] = content
+            email = self._create_email_base_structure(msg, hkt_dt)
+            self._extract_headers(email, headers)
+            self._extract_email_content(email, msg)
             emails.append(email)
         return emails
 
@@ -268,7 +275,7 @@ class GmailService():
             userId="me").execute().get("emailAddress")
         return metadata
 
-    def _retrieve_content(self, msg: dict, metadata: dict, message) -> list[Document]:
+    def _retrieve_content(self, msg: dict, metadata: dict, message) -> list[Document]: # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         msg_id = f"{msg['threadId']}-{msg['id']}"
         documents = []
         mime_types = []
@@ -281,16 +288,24 @@ class GmailService():
             attach_docs = []
             for part in msg["payload"]["parts"]:
                 mime_types.append(part["mimeType"])
-                if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                    metadata["mimeType"] = part["mimeType"]
-                    metadata["id"] = msg_id
-                    documents.append(Document(page_content=body, metadata=metadata))
-                elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                    metadata["mimeType"] = part["mimeType"]
-                    metadata["id"] = msg_id
-                    documents.append(Document(page_content=body, metadata=metadata))
+                # if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
+                #     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                #     metadata["mimeType"] = part["mimeType"]
+                #     metadata["id"] = msg_id
+                #     documents.append(Document(page_content=body, metadata=metadata))
+                # elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
+                #     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                #     metadata["mimeType"] = part["mimeType"]
+                #     metadata["id"] = msg_id
+                #     documents.append(Document(page_content=body, metadata=metadata))
+                mime_type = part["mimeType"]
+                if mime_type in ["text/plain", "text/html"]:
+                    if mime_type not in [doc.metadata["mimeType"] for doc in documents]:
+                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                        documents.append(Document(
+                            page_content=body,
+                            metadata={**metadata, "mimeType": mime_type, "id": msg_id}
+                        ))
                 elif part['mimeType'] == "multipart/alternative":
                     for subpart in part['parts']:
                         if subpart['mimeType'] == 'text/plain':
@@ -449,7 +464,7 @@ class GmailService():
                         logger.info(
                             "Deleted historical %d documents for thread %s to avoid duplication",
                             result.deleted_count, msg["threadId"])
-                        vstore.upload(self.email, documents, self.task)
+                        vstore.upload(documents, self.task)
                         logger.info("✅ Vector store upload successful for task %s", self.task["id"])
                     except (ConnectionError, TimeoutError) as upload_error:
                         logger.error(" Vector store upload failed for task %s: %s",
@@ -526,26 +541,16 @@ def trigger():
         - Modifies the global `task_states` dictionary with the new task's status.
     """
     logger.info("Starting Gmail collection trigger.")
-    try:
+    try:    # pylint: disable=too-many-nested-blocks
         records = collection.find(projection={"token": 1, "refresh_token": 1, "queries": 1})
         if not records:
             logger.error("User not found.")
         for record in records:
             try:
-                credentials = Credentials(
-                    token=record["token"],
-                    refresh_token=record["refresh_token"],
-                    token_uri="https://oauth2.googleapis.com/token",
-                    client_id=os.environ.get("CLIENT_ID"),
-                    client_secret=os.environ.get("CLIENT_SECRET"),
-                    scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-                )
+                credentials = get_user_credentials(record)
                 if not credentials.valid or credentials.expired:
                     logger.error("Invalid or expired credentials for user: %s", record["_id"])
-                # body = record.model_dump()
-                # body["filter"] = {k: v for k, v in body["filter"].items() if v is not None}
                 logger.info("Starting Gmail collection for user: %s", record["_id"])
-
                 if "queries" in record and record["queries"]:
                     logger.info("Queries found for user: %s", record["_id"])
                     for query in record["queries"]:
@@ -585,8 +590,7 @@ def trigger():
         error_msg = f"Fatal error in Gmail collection trigger: {str(e)}"
         logger.error(error_msg, exc_info=True)
 
-
-def retry_pending_tasks():
+def retry_pending_tasks():  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
     Retries all pending tasks found in the task database collections (manual and cronjob).
     
@@ -602,7 +606,7 @@ def retry_pending_tasks():
         - Logs progress and errors
     """
     logger.info("Starting retry of pending tasks (pending for more than 6 hours).")
-    try:
+    try:    # pylint: disable=too-many-locals,too-many-statements,too-many-nested-blocks
         # Access the task database collections
         task_db = MongodbClient["task"]
         manual_collection = task_db["manual"]
@@ -631,26 +635,7 @@ def retry_pending_tasks():
                 logger.info("Processing pending tasks for user: "
                 "%s in %s collection", user_email, collection_name)
                 try:
-                    # Get user credentials from gmail collection
-                    user_creds = collection.find_one(
-                        {"_id": user_email},
-                        projection={"token": 1, "refresh_token": 1}
-                    )
-
-                    if not user_creds:
-                        logger.error("User credentials not found for: %s", user_email)
-                        continue
-
-                    # Validate credentials
-                    credentials = Credentials(
-                        token=user_creds["token"],
-                        refresh_token=user_creds["refresh_token"],
-                        token_uri="https://oauth2.googleapis.com/token",
-                        client_id=os.environ.get("CLIENT_ID"),
-                        client_secret=os.environ.get("CLIENT_SECRET"),
-                        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-                    )
-
+                    credentials = get_user_credentials(email=user_email)
                     if not credentials.valid or credentials.expired:
                         logger.error("Invalid or expired credentials for user: %s", user_email)
                         continue
@@ -763,3 +748,35 @@ def retry_pending_tasks():
     except (ValueError, TypeError, KeyError, RuntimeError) as e:
         error_msg = f"Fatal error in retry pending tasks: {str(e)}"
         logger.error(error_msg, exc_info=True)
+
+def get_user_credentials(user_creds: dict = None, email: str = None) -> Credentials:
+    """
+    Retrieves user credentials from the MongoDB collection for the specified user email.
+
+    Args:
+        user_creds (dict, optional): The user credentials dictionary retrieved from the database.
+        email (str, optional): The email address of the user.
+
+    Returns:
+        Credentials: The user's credentials if found, otherwise raises an error.
+    
+    Raises:
+        ValueError: If user credentials are not found.
+    """
+    if user_creds is None:
+        user_creds = collection.find_one(
+            {"_id": email},
+            projection={"token": 1, "refresh_token": 1}
+        )
+        if not user_creds:
+            logger.error("User credentials not found for: %s", email)
+            raise ValueError("User credentials not found")
+    credentials = Credentials(
+        token=user_creds["token"],
+        refresh_token=user_creds["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ.get("CLIENT_ID"),
+        client_secret=os.environ.get("CLIENT_SECRET"),
+        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+    )
+    return credentials

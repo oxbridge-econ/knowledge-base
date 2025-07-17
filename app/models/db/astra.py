@@ -8,8 +8,6 @@ import astrapy
 import langchain_astradb
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_astradb import AstraDBVectorStore
-from schema import task_states
-from controllers.utils import upsert
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -50,7 +48,7 @@ class VectorStore(AstraDBVectorStore):
             api_endpoint=os.environ["ASTRA_DB_API_ENDPOINT"],
             autodetect_collection=True)
 
-    def add_documents_with_retry(self, chunks, ids, email, task, max_retries=3):
+    def add_documents_with_retry(self, chunks, ids, task, max_retries=3):
         """
         Attempts to add documents to the vstore with a specified number of retries.
 
@@ -85,8 +83,10 @@ class VectorStore(AstraDBVectorStore):
                     # upsert(email, task)
                     # task_states[task["id"]] = "Failed"
                     raise e
+        return False
 
-    def upload(self, email, documents, task):
+
+    def upload(self, documents, task):
         """
         Splits the provided documents into smaller chunks using a text splitter
         and uploads them to the vector store.
@@ -118,7 +118,7 @@ class VectorStore(AstraDBVectorStore):
             for index, chunk in enumerate(chunks):
                 _id = f"{chunk.metadata['id']}-{str(index)}"
                 ids.append(_id)
-            return self.add_documents_with_retry(chunks, ids, email, task)
+            return self.add_documents_with_retry(chunks, ids,task)
         except ValueError as e:
             logger.error("Error adding documents to vectorstore: %s", e)
             task["status"] = "failed"
