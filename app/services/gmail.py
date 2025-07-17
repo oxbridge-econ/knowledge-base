@@ -331,16 +331,24 @@ class GmailService():
             attach_docs = []
             for part in msg["payload"]["parts"]:
                 mime_types.append(part["mimeType"])
-                if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                    metadata["mimeType"] = part["mimeType"]
-                    metadata["id"] = msg_id
-                    documents.append(Document(page_content=body, metadata=metadata))
-                elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                    metadata["mimeType"] = part["mimeType"]
-                    metadata["id"] = msg_id
-                    documents.append(Document(page_content=body, metadata=metadata))
+                # if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
+                #     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                #     metadata["mimeType"] = part["mimeType"]
+                #     metadata["id"] = msg_id
+                #     documents.append(Document(page_content=body, metadata=metadata))
+                # elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
+                #     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                #     metadata["mimeType"] = part["mimeType"]
+                #     metadata["id"] = msg_id
+                #     documents.append(Document(page_content=body, metadata=metadata))
+                mime_type = part["mimeType"]
+                if mime_type in ["text/plain", "text/html"]:
+                    if mime_type not in [doc.metadata["mimeType"] for doc in documents]:
+                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                        documents.append(Document(
+                            page_content=body,
+                            metadata={**metadata, "mimeType": mime_type, "id": msg_id}
+                        ))
                 elif part['mimeType'] == "multipart/alternative":
                     for subpart in part['parts']:
                         if subpart['mimeType'] == 'text/plain':
@@ -798,7 +806,7 @@ def get_user_credentials(user_creds: dict = None, email: str = None) -> Credenti
     Raises:
         ValueError: If user credentials are not found.
     """
-    if user_creds is not None:
+    if user_creds is None:
         user_creds = collection.find_one(
             {"_id": email},
             projection={"token": 1, "refresh_token": 1}
