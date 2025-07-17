@@ -1,0 +1,26 @@
+name: Sync to Hugging Face hub - Dev
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: dev  # Explicitly checkout the dev branch
+      - name: Configure Git user
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+      - name: Merge dev into main
+        run: |
+          git checkout main
+          git merge dev --no-ff --no-edit
+      - name: Push to hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: git push https://OxbridgeEcon:$HF_TOKEN@huggingface.co/spaces/Oxbridge-Economics/knowledge-base-dev main --force
