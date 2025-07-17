@@ -22,7 +22,7 @@ from azure.storage.blob import (
 from azure.core.exceptions import AzureError
 
 from models.llm import client
-from models.db import vstore
+from models.db import vstore, astra_collection
 from controllers.utils import upsert
 from schema import task_states
 
@@ -313,7 +313,10 @@ def upload(docs: list[Document], email: str, task: dict):
 
 
 
-def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_type: str = None) -> Dict[str, Any]:
+def upload_file_to_azure(
+        file_content: bytes, filename: str,
+        email: str, content_type: str = None
+    ) -> Dict[str, Any]:
     """
     Upload a file to Azure Blob Storage.
     
@@ -332,6 +335,7 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
             "error": "Azure Storage not configured",
             "message": "Azure Storage connection string is missing"
         }
+
     blob_path = f"{email}/{filename}"
 
     try:
@@ -352,7 +356,6 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
         content_settings = None
         if content_type:
             content_settings = ContentSettings(content_type=content_type)
-
         # Upload the file
         blob_client.upload_blob(
             file_content, 
@@ -443,3 +446,64 @@ def generate_download_url(blob_path: str, expiry_hours: int = 1) -> str:
     except Exception as e:
         logger.error("Error generating download URL for %s: %s", blob_path, e)
         raise e
+
+def delete_file(email: str, file_name: str) -> Dict[str, Any]:
+    """
+    Deletes a file from Azure Blob Storage 
+    and removes associated documents from the vector database.
+    Args:
+        email (str): The email of the user.
+        file_name (str): The name of the file to delete.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the result of the deletion operation.
+    """
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+        container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
+        blob_path = f"{email}/{file_name}"
+
+        blob_client = container_client.get_blob_client(blob_path)
+        if not blob_client.exists():
+            return {"success": False, "error": f"File '{file_name}' not found."}
+
+        # Delete the blob from Azure Storage
+        blob_client.delete_blob()
+
+        # Generate the same document ID used during upload
+        document_id = str(hashlib.sha256((email + file_name).encode()).hexdigest())
+
+        # Extract title and extension from filename
+        title = file_name.split(".")[0]
+        ext = file_name.split(".")[-1]
+
+        # Delete from vector database using the same approach as Gmail service
+        try:
+            result = astra_collection.delete_many({
+                "$and": [
+                    {"metadata.userId": email},
+                    {"metadata.id": document_id},
+                    {"metadata.type": "file"},
+                    {"metadata.title": title},
+                    {"metadata.ext": ext}
+                ]
+            })
+
+            logger.info("Deleted %d document chunks from vector DB for file %s, user %s",
+                       result.deleted_count, file_name, email)
+
+        except (ConnectionError, TimeoutError, ValueError) as vdb_error:
+            logger.error("Error deleting from vector DB for file %s: %s", file_name, vdb_error)       
+
+        return {
+            "success": True, 
+            "message": (f"File '{file_name}' deleted successfully"
+                        f" from Azure Storage and vector database."
+                    )
+        }
+    except AzureError as e:
+        logger.error("Error deleting file %s: %s", file_name, e)
+        return {"success": False, "error": str(e)}
+    except (ConnectionError, TimeoutError, ValueError) as e:
+        logger.error("Unexpected error deleting file %s: %s", file_name, e)
+        return {"success": False, "error": str(e)}
