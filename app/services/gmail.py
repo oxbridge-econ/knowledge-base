@@ -249,49 +249,6 @@ class GmailService():
             hkt_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
             email = self._create_email_base_structure(msg, hkt_dt)
             self._extract_headers(email, headers)
-            # if 'parts' in msg['payload']:
-            #     for part in msg['payload']['parts']:
-            #         if part['mimeType'] == 'text/plain':
-            #             content = base64.urlsafe_b64decode(
-            #                 part['body']['data']).decode('utf-8')
-            #             if content == "":
-            #                 continue
-            #             email['content'] = content
-            #             email['mimeType'] = part['mimeType']
-            #             break
-            #         if part['mimeType'] == 'text/html':
-            #             content = base64.urlsafe_b64decode(
-            #                 part['body']['data']).decode('utf-8')
-            #             if content == "":
-            #                 continue
-            #             email['content'] = content
-            #             email['mimeType'] = part['mimeType']
-            #             break
-            #         if part['mimeType'] == "multipart/alternative":
-            #             for subpart in part['parts']:
-            #                 if subpart['mimeType'] == 'text/plain':
-            #                     content = base64.urlsafe_b64decode(
-            #                         subpart['body']['data']).decode('utf-8')
-            #                     if content == "":
-            #                         continue
-            #                     email['content'] = content
-            #                     email['mimeType'] = subpart['mimeType']
-            #                     break
-            #                 if subpart['mimeType'] == 'text/html':
-            #                     content = base64.urlsafe_b64decode(
-            #                         subpart['body']['data']).decode('utf-8')
-            #                     if content == "":
-            #                         continue
-            #                     email['content'] = content
-            #                     email['mimeType'] = subpart['mimeType']
-            #                     break
-            # elif 'data' in msg['payload']['body']:
-            #     email['mimeType'] = msg['payload']['mimeType']
-            #     content = base64.urlsafe_b64decode(
-            #         msg['payload']['body']['data']).decode('utf-8')
-            #     if content == "":
-            #         continue
-            #     email['content'] = content
             self._extract_email_content(email, msg)
             emails.append(email)
         return emails
@@ -318,7 +275,7 @@ class GmailService():
             userId="me").execute().get("emailAddress")
         return metadata
 
-    def _retrieve_content(self, msg: dict, metadata: dict, message) -> list[Document]:
+    def _retrieve_content(self, msg: dict, metadata: dict, message) -> list[Document]: # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         msg_id = f"{msg['threadId']}-{msg['id']}"
         documents = []
         mime_types = []
@@ -584,7 +541,7 @@ def trigger():
         - Modifies the global `task_states` dictionary with the new task's status.
     """
     logger.info("Starting Gmail collection trigger.")
-    try:
+    try:    # pylint: disable=too-many-nested-blocks
         records = collection.find(projection={"token": 1, "refresh_token": 1, "queries": 1})
         if not records:
             logger.error("User not found.")
@@ -633,7 +590,7 @@ def trigger():
         error_msg = f"Fatal error in Gmail collection trigger: {str(e)}"
         logger.error(error_msg, exc_info=True)
 
-def retry_pending_tasks():
+def retry_pending_tasks():  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
     Retries all pending tasks found in the task database collections (manual and cronjob).
     
@@ -649,7 +606,7 @@ def retry_pending_tasks():
         - Logs progress and errors
     """
     logger.info("Starting retry of pending tasks (pending for more than 6 hours).")
-    try:
+    try:    # pylint: disable=too-many-locals,too-many-statements,too-many-nested-blocks
         # Access the task database collections
         task_db = MongodbClient["task"]
         manual_collection = task_db["manual"]
