@@ -313,7 +313,10 @@ def upload(docs: list[Document], email: str, task: dict):
 
 
 
-def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_type: str = None) -> Dict[str, Any]:
+def upload_file_to_azure(
+        file_content: bytes, filename: str,
+        email: str, content_type: str = None
+    ) -> Dict[str, Any]:
     """
     Upload a file to Azure Blob Storage.
     
@@ -353,7 +356,6 @@ def upload_file_to_azure(file_content: bytes, filename: str, email:str ,content_
         content_settings = None
         if content_type:
             content_settings = ContentSettings(content_type=content_type)
-
         # Upload the file
         blob_client.upload_blob(
             file_content, 
@@ -490,9 +492,8 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
             logger.info("Deleted %d document chunks from vector DB for file %s, user %s",
                        result.deleted_count, file_name, email)
 
-        except Exception as vdb_error:
-            logger.error("Error deleting from vector DB for file %s: %s", file_name, vdb_error)
-            # Continue execution - Azure file is already deleted
+        except (ConnectionError, TimeoutError, ValueError) as vdb_error:
+            logger.error("Error deleting from vector DB for file %s: %s", file_name, vdb_error)       
 
         return {
             "success": True, 
@@ -503,6 +504,6 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
     except AzureError as e:
         logger.error("Error deleting file %s: %s", file_name, e)
         return {"success": False, "error": str(e)}
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError) as e:
         logger.error("Unexpected error deleting file %s: %s", file_name, e)
         return {"success": False, "error": str(e)}
