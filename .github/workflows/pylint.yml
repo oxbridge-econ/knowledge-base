@@ -2,7 +2,7 @@ name: Pylint
 
 on:               # or directly `on: [push]` to run the action on every push on any branch
   pull_request:
-    branches: [dev, main]
+    branches: [dev]
 
 jobs:
   build:
