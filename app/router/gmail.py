@@ -321,6 +321,7 @@ def put_query(
     Args:
         body (EmailFilter): The updated email query data.
         email (str): The user's email address, provided as a query parameter.
+        query_id (str): The ID of the query to be updated, provided as a query parameter.
 
     Returns:
         JSONResponse: A JSON response indicating whether the update was successful or not.
