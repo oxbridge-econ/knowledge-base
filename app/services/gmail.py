@@ -410,6 +410,16 @@ class GmailService():
             documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
         return documents
 
+    def _initialize_collection_task(self, query):
+        """Initialize the collection task and update status."""
+        self.task['status'] = "in progress"
+        upsert(self.email, self.task)
+        if self.task["type"] == "manual":
+            query["status"] = "in progress"
+            upsert(self.email, query, collection=collection, size=10, field="queries")
+        logger.info("✅ Task %s status updated to 'in progress'", self.task["id"])
+
+
     def collect(self, query):
         """
         Collects Gmail messages matching the specified query,
@@ -438,12 +448,7 @@ class GmailService():
         """
         logger.info("Starting Gmail collection for user with query: %s", query)
         try:
-            self.task['status'] = "in progress"
-            upsert(self.email, self.task)
-            if self.task["type"] == "manual":
-                query["status"] = "in progress"
-                upsert(self.email, query, collection=collection, size=10, field="queries")
-            logger.info("✅ Task %s status updated to 'in progress'", self.task["id"])
+            self._initialize_collection_task(query)
             documents = []
             messages_processed = 0
             for message in self._search(query, max_results=200, check_next_page=True):
