@@ -38,17 +38,6 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         - Updates or inserts the user's query parameters in the MongoDB collection.
         - Modifies the global `task_states` dictionary with the new task's status.
     """
-    # cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
-    # if cred_dict is None:
-    #     return JSONResponse(content={"error": "User not found."}, status_code=404)
-    # credentials = Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri="https://oauth2.googleapis.com/token",
-    #     client_id=os.environ.get("CLIENT_ID"),
-    #     client_secret=os.environ.get("CLIENT_SECRET"),
-    #     scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    # )
     credentials = get_user_credentials(email=email)
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
@@ -91,17 +80,6 @@ def preview(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    # cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
-    # if cred_dict is None:
-    #     return JSONResponse(content={"error": "User not found."}, status_code=404)
-    # credentials = Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri="https://oauth2.googleapis.com/token",
-    #     client_id=os.environ.get("CLIENT_ID"),
-    #     client_secret=os.environ.get("CLIENT_SECRET"),
-    #     scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    # )
     credentials = get_user_credentials(email=email)
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False}, status_code=401)
@@ -211,15 +189,6 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
     Returns:
         JSONResponse: A JSON response containing the user's documents.
     """
-    # cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
-    # credentials = Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri="https://oauth2.googleapis.com/token",
-    #     client_id=os.environ.get("CLIENT_ID"),
-    #     client_secret=os.environ.get("CLIENT_SECRET"),
-    #     scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    # )
     credentials = get_user_credentials(email=email)
     _filter = {
         "metadata.userId": email,
@@ -310,17 +279,6 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         - Updates or inserts the user's query parameters in the MongoDB collection.
         - Modifies the global `task_states` dictionary with the new task's status.
     """
-    # cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
-    # if cred_dict is None:
-    #     return JSONResponse(content={"error": "User not found."}, status_code=404)
-    # credentials = Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri="https://oauth2.googleapis.com/token",
-    #     client_id=os.environ.get("CLIENT_ID"),
-    #     client_secret=os.environ.get("CLIENT_SECRET"),
-    #     scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    # )
     credentials = get_user_credentials(email=email)
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
@@ -337,6 +295,7 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     service = GmailService(credentials, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
+
     # data = {
     #     "_id": email,
     #     "query": query
