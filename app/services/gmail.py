@@ -440,14 +440,20 @@ class GmailService():
         try:
             self.task['status'] = "in progress"
             upsert(self.email, self.task)
+            if self.task["type"] == "manual":
+                query["status"] = "in progress"
+                upsert(self.email, query, collection=collection, size=10, field="queries")
             logger.info("✅ Task %s status updated to 'in progress'", self.task["id"])
             documents = []
+            messages_processed = 0
             for message in self._search(query, max_results=200, check_next_page=True):
                 logger.info("Processing message with ID: %s", message["id"])
                 msg = self.service.users().messages().get(  # pylint: disable=no-member
                     userId="me", id=message["id"], format="full").execute()
                 metadata = self._get_metadata(msg)
                 documents = self._retrieve_content(msg, metadata, message)
+                # Increment counter for each message processed
+                messages_processed += 1
                 if len(query.get("topics", [])) > 0:
                     documents = check_relevance(documents, query.get("topics", []))
                 logger.info("Found %d relevant documents for task %s",
@@ -481,6 +487,12 @@ class GmailService():
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             task_states[self.task["id"]] = "Completed"
+            if self.task["type"] == "manual":
+                query["status"] = "completed"
+                query["count"] = messages_processed
+                query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+                self.task["query"] = query
+                upsert(self.email, query, collection=collection, size=10, field="queries")
             upsert(self.email, self.task)
             logger.info("✅ Collection completed for task %s", self.task["id"])
         except (ValueError, TypeError, KeyError,
@@ -490,6 +502,11 @@ class GmailService():
             # Mark task as failed
             self.task['status'] = "failed"
             task_states[self.task["id"]] = "Failed"
+            if self.task["type"] == "manual":
+                query["status"] = "failed"
+                query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+                self.task["query"] = query
+                upsert(self.email, query, collection=collection, size=10, field="queries")
             upsert(self.email, self.task)
             raise
 
