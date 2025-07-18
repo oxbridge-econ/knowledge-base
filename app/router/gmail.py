@@ -1,6 +1,7 @@
 """Module for defining the main routes of the API."""
 import threading
 import uuid
+from datetime import datetime
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
@@ -64,15 +65,15 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     service = GmailService(credentials, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
-    data = {
-        "_id": email,
-        "query": query
-    }
-    collection.update_one(
-        { '_id': email },
-        { '$set': data },
-        upsert=True
-    )
+    # data = {
+    #     "_id": email,
+    #     "query": query
+    # }
+    # collection.update_one(
+    #     { '_id': email },
+    #     { '$set': data },
+    #     upsert=True
+    # )
     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
     upsert(email, task)
     task_states[task["id"]] = "Pending"
@@ -336,17 +337,62 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     service = GmailService(credentials, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
-    data = {
-        "_id": email,
-        "query": query
-    }
-    collection.update_one(
-        { '_id': email },
-        { '$set': data },
-        upsert=True
-    )
+    # data = {
+    #     "_id": email,
+    #     "query": query
+    # }
+    # collection.update_one(
+    #     { '_id': email },
+    #     { '$set': data },
+    #     upsert=True
+    # )
     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
     upsert(email, task)
     task_states[task["id"]] = "Pending"
     upsert(email, query, collection=collection, size=10, field="queries")
     return JSONResponse(content=task)
+
+@router.put("/query")
+def put_query(
+    body: EmailFilter, email: str = Query(...), query_id: str = Query(...)
+    ) -> JSONResponse:
+    """
+    Updates an existing email query for a user in the MongoDB collection.
+
+    Args:
+        body (EmailFilter): The updated email query data.
+        email (str): The user's email address, provided as a query parameter.
+
+    Returns:
+        JSONResponse: A JSON response indicating whether the update was successful or not.
+    """
+    user = collection.find_one({"_id": email})
+    if user is None:
+        return JSONResponse(content={"error": "User not found."}, status_code=404)
+
+    # Check if query exists before updating
+    query_exists = collection.find_one(
+        {"_id": email, "queries.id": query_id},
+        projection={"queries.$": 1}
+    )
+    if not query_exists:
+        return JSONResponse(
+            content={"error": f"Query with ID '{query_id}' not found for user."},
+            status_code=404
+        )
+
+    body = body.model_dump()
+    query = {k: v for k, v in body.items() if v is not None}
+    query["createdTime"] = query_exists["queries"][0].get("createdTime")
+    query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    del query["max_results"]
+    # Update the query in the database
+    result = collection.update_one(
+        {"_id": email, "queries.id": query_id},
+        {"$set": {"queries.$": query}}
+    )
+
+    if result.modified_count > 0:
+        return JSONResponse(content={"status": "success"}, status_code=200)
+
+    return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
