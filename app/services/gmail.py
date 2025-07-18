@@ -417,8 +417,17 @@ class GmailService():
         if self.task["type"] == "manual":
             query["status"] = "in progress"
             upsert(self.email, query, collection=collection, size=10, field="queries")
-        logger.info("✅ Task %s status updated to 'in progress'", self.task["id"])
+        logger.info(" Task %s status updated to 'in progress'", self.task["id"])
 
+    def _update_query_status(self, query, messages_processed):
+        """Update the query status in the task."""
+        if self.task["type"] == "manual":
+            query["status"] = self.task["status"]
+            query["count"] = messages_processed
+            query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+            self.task["query"] = query
+            upsert(self.email, query, collection=collection, size=10, field="queries")
+            logger.info(" Query status updated")
 
     def collect(self, query):
         """
@@ -492,12 +501,7 @@ class GmailService():
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             task_states[self.task["id"]] = "Completed"
-            if self.task["type"] == "manual":
-                query["status"] = "completed"
-                query["count"] = messages_processed
-                query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-                self.task["query"] = query
-                upsert(self.email, query, collection=collection, size=10, field="queries")
+            self._update_query_status(query, messages_processed)
             upsert(self.email, self.task)
             logger.info("✅ Collection completed for task %s", self.task["id"])
         except (ValueError, TypeError, KeyError,
@@ -507,11 +511,7 @@ class GmailService():
             # Mark task as failed
             self.task['status'] = "failed"
             task_states[self.task["id"]] = "Failed"
-            if self.task["type"] == "manual":
-                query["status"] = "failed"
-                query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-                self.task["query"] = query
-                upsert(self.email, query, collection=collection, size=10, field="queries")
+            self._update_query_status(query, 0)
             upsert(self.email, self.task)
             raise
 
