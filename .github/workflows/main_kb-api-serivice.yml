@@ -31,10 +31,13 @@ jobs:
           cd app
           pip install -r requirements.txt
 
-      - name: Zip artifact for deployment
+      - name: Zip artifact for deployment (app directory only)
         run: |
           cd app
+          ls -la  # Debug: show what files are being packaged
           zip -r ../release.zip . -x "__pycache__/*" "*.pyc" ".env"
+          cd ..
+          unzip -l release.zip  # Debug: show what's in the zip
 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
