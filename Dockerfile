@@ -1,6 +1,9 @@
 # Use the official Python 3.10.9 image
 FROM python:3.10.9
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PORT=7860
 # Copy the current directory contents into the container at /app
 COPY . .
 
