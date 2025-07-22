@@ -68,3 +68,4 @@ jobs:
           app-name: 'kb-api-service'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_56EE3C4AE1574CA48D9349717CCF7193 }}
+          startup-command: 'gunicorn --bind=0.0.0.0:7860 --workers=4 --worker-class=uvicorn.workers.UvicornWorker main:app'
