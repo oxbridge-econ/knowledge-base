@@ -1,4 +1,4 @@
-name: Build and deploy Python app to Azure Web App
+name: Build and deploy Python app to Azure Web App - kb-api-serivice
 
 on:
   push:
@@ -20,24 +20,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Create and start virtual environment
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
-      
-      - name: Install dependencies
-        run: |
-          cd app
-          pip install -r requirements.txt
+      # REMOVE the dependency installation - let Azure handle it
+      # - name: Create and start virtual environment
+      # - name: Install dependencies
 
       - name: Zip artifact for deployment (app directory only)
         run: |
           cd app
           ls -la  # Debug: show what files are being packaged
-          zip -r ../release.zip . -x "__pycache__/*" "*.pyc" ".env"
-          cd ..
-          unzip -l release.zip  # Debug: show what's in the zip
+          echo "Contents of requirements.txt:"
+          head -10 requirements.txt
+          zip -r ../release.zip . -x "__pycache__/*" "*.pyc" ".env" "*.log"
 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
@@ -62,6 +55,6 @@ jobs:
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
-          app-name: 'kb-api-serivice'  # Change to your new app name
+          app-name: 'kb-api-serivice'
           slot-name: 'Production'
-          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+          publish-profile: ${{ secrets.AzureAppService_PublishProfile_1234 }}
