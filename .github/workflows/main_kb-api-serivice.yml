@@ -6,55 +6,35 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  AZURE_WEBAPP_NAME: 'kb-api-serivice'
+  AZURE_WEBAPP_PACKAGE_PATH: './app'
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python version
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # REMOVE the dependency installation - let Azure handle it
-      # - name: Create and start virtual environment
-      # - name: Install dependencies
-
-      - name: Zip artifact for deployment (app directory only)
-        run: |
-          cd app
-          ls -la  # Debug: show what files are being packaged
-          echo "Contents of requirements.txt:"
-          head -10 requirements.txt
-          zip -r ../release.zip . -x "__pycache__/*" "*.pyc" ".env" "*.log"
-
-      - name: Upload artifact for deployment jobs
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-app
-          path: release.zip
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
+    - uses: actions/checkout@v4
     
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: python-app
-
-      - name: Unzip artifact for deployment
-        run: unzip release.zip
-      
-      - name: 'Deploy to Azure Web App'
-        uses: azure/webapps-deploy@v3
-        id: deploy-to-webapp
-        with:
-          app-name: 'kb-api-serivice'
-          slot-name: 'Production'
-          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        cd app
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Building web app
+      uses: azure/appservice-build@v2
+      with:
+        source-directory: './app'
+        
+    - name: Deploy web App using GH Action azure/webapps-deploy
+      uses: azure/webapps-deploy@v3
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+        package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
