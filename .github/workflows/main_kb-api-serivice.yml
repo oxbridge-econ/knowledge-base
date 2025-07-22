@@ -31,6 +31,8 @@ jobs:
       uses: azure/appservice-build@v2
       with:
         source-directory: './app'
+        platform: 'python'
+        platform-version: '3.11'
         
     - name: Deploy web App using GH Action azure/webapps-deploy
       uses: azure/webapps-deploy@v3
