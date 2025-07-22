@@ -42,7 +42,7 @@ google-auth==2.40.2
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.2
 googleapis-common-protos==1.70.0
-gunicorn
+gunicorn==21.2.0
 h11==0.16.0
 h2==4.2.0
 hf-xet==1.1.2
