@@ -185,7 +185,7 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
     upsert(email, task)
     task_states[task["id"]] = "Completed"
 
-def load_img(content: bytes, filename: str, email: str, task: dict,):
+def load_img(content: bytes, filename: str, email: str, task: dict):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
@@ -221,7 +221,7 @@ def load_img(content: bytes, filename: str, email: str, task: dict,):
     task_states[task["id"]] = "Completed"
 
 
-def load_docx(content: bytes, filename: str, email: str, task: dict,):
+def load_docx(content: bytes, filename: str, email: str, task: dict):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
