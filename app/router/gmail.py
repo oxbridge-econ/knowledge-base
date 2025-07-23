@@ -323,6 +323,10 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         "type": "manual",
         "query": query
     }
+    query["status"] = task["status"]
+    query["service"] = task["service"]
+    query["type"] = task["type"]
+    query["count"] = 0
     service = GmailService(credentials, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
@@ -336,7 +340,7 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     #     { '$set': data },
     #     upsert=True
     # )
-    query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
+    query["id"] = task["id"]
     upsert(email, task)
     task_states[task["id"]] = "Pending"
     upsert(email, query, collection=collection, size=10, field="queries")
