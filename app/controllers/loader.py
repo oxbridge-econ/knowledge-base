@@ -395,7 +395,6 @@ def get_files(email: str) -> List[Dict[str, Any]]:
                 "id": file_id,
                 "filename": blob.name.split("/")[-1],
                 "createdAt": blob.last_modified.isoformat(),
-                "status": "uploaded",
                 "downloadUrl": download_url,
             })
         return files
