@@ -18,7 +18,7 @@ from models.db import MongodbClient
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
 logging.getLogger().setLevel(logging.INFO)
-app = FastAPI(docs_url="/")
+
 
 class Config: # pylint: disable=too-few-public-methods
     """

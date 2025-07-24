@@ -47,16 +47,16 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
         if file.content_type == "application/pdf":
             threading.Thread(
             target=load_pdf, args=(content, file.filename,
-            email, task, file.content_type)
+            email, task)
             ).start()
         elif file.content_type == \
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
             threading.Thread(
-                target=load_docx, args=(content, file.filename, email, task, file.content_type)
+                target=load_docx, args=(content, file.filename, email, task)
                 ).start()
         elif file.content_type in ["image/png", "image/jpeg"]:
             threading.Thread(
-                target=load_img, args=(content, file.filename, email, task, file.content_type)
+                target=load_img, args=(content, file.filename, email, task)
             ).start()
         else:
             task["status"] = "failed"
@@ -66,7 +66,7 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
                 status_code=400,
                 detail="Invalid file type. Only PDF, TXT, and DOCX are allowed."
             )
-        upload_file_to_azure(content, file.filename, email, file.content_type)
+        upload_file_to_azure(content, file.filename, email)
     except FileAlreadyExistsError as e:
         task["status"] = "failed"
         task_states[task["id"]] = "Failed"
