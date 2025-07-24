@@ -173,41 +173,34 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     Returns:
         JSONResponse: A JSON response containing the user's email queries.
     """
-    # Define the required fields to include in the response
-    required_fields = [
-        "id", "subject", "from_email", "to_email", "cc_email", "has_words", 
-        "not_has_words", "before", "after", "max_results", "topics"
-    ]
+    user = collection.find_one({"_id": email})
+    if user is None:
+        return JSONResponse(content={"error": "User not found."}, status_code=404)
 
-    pipeline = [
-        {"$match": {"_id": email}},
-        {"$project": {
-            "_id": 0,  # Exclude _id
-            "queries": {
-                "$map": {
-                    "input": "$queries",
-                    "as": "query",
-                    "in": {
-                        "$arrayToObject": {
-                            "$filter": {
-                                "input": {
-                                    "$objectToArray": "$$query"
-                                },
-                                "cond": {
-                                    "$in": ["$$this.k", required_fields]
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }}
-    ]
-    queries = []
-    if collection.count_documents({"_id": email}) > 0:
-        result = list(collection.aggregate(pipeline))
-        queries = result[0] if result else {"queries": []}
-    return JSONResponse(content=queries, status_code=200)
+    user_data = collection.find_one({"_id": email}, projection={"queries": 1})
+
+    if not user_data or "queries" not in user_data:
+        return JSONResponse(content={"queries": []}, status_code=200)
+
+    processed_queries = []
+    for query in user_data["queries"]:
+        processed_query = {
+            "id": query.get("id", "unknown"),
+            "status": query.get("status", "unknown"),
+            "filters": {
+                key: value for key, value in query.items()
+                if key in ["subject", "from_email", "to_email", "cc_email",
+                          "has_words", "not_has_words", "before", "after", "topics"]
+                and value is not None
+            },
+            "count": query.get("count", 0),
+            "service": query.get("service", ""),
+            "type": query.get("type", ""),
+            "createdTime": query.get("createdTime", ""),
+            "updatedTime": query.get("updatedTime", "")
+        }
+        processed_queries.append(processed_query)
+    return JSONResponse(content=processed_queries, status_code=200)
 
 @router.post("/docs")
 def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
