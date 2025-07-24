@@ -95,7 +95,6 @@ async def get_azure_files(email: str = Query(...)) -> JSONResponse:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
-
 @router.delete("")
 async def delete(email: str = Query(...), file_name: str = Query(...),) -> JSONResponse:
     """
