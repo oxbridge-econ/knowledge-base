@@ -197,7 +197,6 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
             "service": query.get("service", ""),
             "type": query.get("type", ""),
             "createdTime": query.get("createdTime", ""),
-            "updatedTime": query.get("updatedTime", "")
         }
         processed_queries.append(processed_query)
     return JSONResponse(content=processed_queries, status_code=200)
