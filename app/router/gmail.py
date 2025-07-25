@@ -481,6 +481,7 @@ def put_query(
         upsert(email, task)
         task_states[task["id"]] = "Pending"
         upsert(email, query, collection=collection, size=10, field="queries")
-        return JSONResponse(content={"status": "query updated and collection started", "task": task}, status_code=200)
+        return JSONResponse(content={"status": "query updated and collection started",
+             "task": task}, status_code=200)
 
     return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
