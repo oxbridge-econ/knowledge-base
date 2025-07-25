@@ -2,6 +2,7 @@
 import time
 from venv import logger
 from datetime import datetime
+import hashlib
 from langchain_core.documents import Document
 from openai import RateLimitError
 
@@ -117,3 +118,32 @@ def upsert(
             },
             upsert=True
         )
+
+
+def generate_query_hash(query_params: dict) -> str:
+    """
+    Generate a unique hash for query parameters to detect duplicates.
+    Excludes metadata fields that shouldn't affect deduplication.
+    
+    Args:
+        query_params (dict): The query parameters dictionary
+        
+    Returns:
+        str: SHA-256 hash of the normalized query parameters
+    """
+    # Fields to exclude from hash calculation (metadata fields)
+    excluded_fields = {
+        'max_results', 'status', 'service', 'type', 'count', 'id', 
+        'hash', 'createdTime', 'updatedTime'
+    }
+
+    # Create a copy and remove excluded fields for hash calculation
+    normalized_query = {k: v for k, v in query_params.items() 
+                       if k not in excluded_fields and v is not None}
+
+    # Sort keys to ensure consistent hash for same content
+    sorted_query = dict(sorted(normalized_query.items()))
+
+    # Convert to string and hash
+    query_string = str(sorted_query)
+    return hashlib.sha256(query_string.encode()).hexdigest()

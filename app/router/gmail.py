@@ -2,13 +2,14 @@
 import threading
 import uuid
 from datetime import datetime
+import hashlib
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
 from services import GmailService, get_user_credentials
 from schema import EmailFilter, DocsReq, task_states
 from models.db import MongodbClient, astra_collection
-from controllers.utils import upsert
+from controllers.utils import upsert, generate_query_hash
 
 router = APIRouter(prefix="/service/gmail", tags=["service"])
 collection = MongodbClient["service"]["gmail"]
@@ -298,6 +299,7 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         JSONResponse: 
             - If the user is not found, returns a 404 error with an appropriate message.
             - If the user's credentials are invalid or expired, returns a 401 error.
+            - If duplicate query is found, returns the existing query information.
             - Otherwise, starts a background thread to collect emails,
               updates the user's query in the database,
               and returns a JSON response containing the task ID and its initial status.
@@ -316,6 +318,46 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
                                      "error": "Invalid or expired credentials."}, status_code=401)
     body = body.model_dump()
     query = {k: v for k, v in body.items() if v is not None}
+
+    query_hash = generate_query_hash(query)
+    # Check for existing query with same hash
+    existing_query = collection.find_one(
+        {"_id": email, "queries.hash": query_hash},
+        projection={"queries.$": 1}
+    )
+
+    if existing_query:
+        existing_query_data = existing_query["queries"][0]
+        # Define essential fields to include in response
+        essential_fields = [
+            "subject", "from_email", "to_email", "cc_email", 
+            "has_words", "not_has_words", "before", "after", "topics"
+        ]
+
+        # Extract essential query parameters
+        query_params = {
+            field: existing_query_data.get(field) 
+            for field in essential_fields 
+            if existing_query_data.get(field) is not None
+        }
+        return JSONResponse(
+            content={
+                "message": "Duplicate query detected. Returning existing query.",
+                "existing_query": {
+                    "query_parameters": query_params,
+                    "id": existing_query_data.get("id"),
+                    "status": existing_query_data.get("status"),
+                    "service": existing_query_data.get("service"),
+                    "type": existing_query_data.get("type"),
+                    "createdTime": existing_query_data.get("createdTime"),
+                    "updatedTime": existing_query_data.get("updatedTime"),
+                    "count": existing_query_data.get("count", 0)
+                }
+            },
+            status_code=200
+        )
+
+
     task = {
         "id": f"{str(uuid.uuid4())}",
         "status": "pending",
@@ -323,6 +365,7 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         "type": "manual",
         "query": query
     }
+
     query["status"] = task["status"]
     query["service"] = task["service"]
     query["type"] = task["type"]
@@ -341,6 +384,7 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     #     upsert=True
     # )
     query["id"] = task["id"]
+    query["hash"] = query_hash
     upsert(email, task)
     task_states[task["id"]] = "Pending"
     upsert(email, query, collection=collection, size=10, field="queries")
@@ -377,6 +421,35 @@ def put_query(
 
     body = body.model_dump()
     query = {k: v for k, v in body.items() if v is not None}
+
+    # Generate new hash for the updated query
+    query_hash = generate_query_hash(query)
+
+    # Check if updated query would create a duplicate (excluding current query)
+    duplicate_query = collection.find_one(
+        {
+            "_id": email, 
+            "queries": {
+                "$elemMatch": {
+                    "hash": query_hash,
+                    "id": {"$ne": query_id}
+                }
+            }
+        },
+        projection={"queries.$": 1}
+    )
+
+    if duplicate_query:
+        return JSONResponse(
+            content={
+                "error": "Updated query would create a duplicate.",
+                "duplicate_query_id": duplicate_query["queries"][0].get("id")
+            },
+            status_code=409
+        )
+
+    query["id"] = query_id
+    query["hash"] = query_hash
     query["createdTime"] = query_exists["queries"][0].get("createdTime")
     query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
     del query["max_results"]
@@ -387,6 +460,27 @@ def put_query(
     )
 
     if result.modified_count > 0:
-        return JSONResponse(content={"status": "success"}, status_code=200)
+        credentials = get_user_credentials(email=email)
+        if not credentials.valid or credentials.expired:
+            return JSONResponse(content={"valid": False,
+            "error": "Invalid or expired credentials. Could not start collection"}, status_code=401)
+        task = {
+            "id": f"{str(uuid.uuid4())}",
+            "status": "pending",
+            "service": "gmail",
+            "type": "manual",
+            "query": query
+        }
+        query["status"] = task["status"]
+        query["service"] = task["service"]
+        query["type"] = task["type"]
+        query["count"] = 0
+        service = GmailService(credentials, email, task)
+        threading.Thread(target=service.collect, args=[query]).start()
+
+        upsert(email, task)
+        task_states[task["id"]] = "Pending"
+        upsert(email, query, collection=collection, size=10, field="queries")
+        return JSONResponse(content={"status": "query updated and collection started", "task": task}, status_code=200)
 
     return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
