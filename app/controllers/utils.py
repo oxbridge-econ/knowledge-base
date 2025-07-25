@@ -138,7 +138,7 @@ def generate_query_hash(query_params: dict) -> str:
     }
 
     # Create a copy and remove excluded fields for hash calculation
-    normalized_query = {k: v for k, v in query_params.items() 
+    normalized_query = {k: v for k, v in query_params.items()
                        if k not in excluded_fields and v is not None}
 
     # Sort keys to ensure consistent hash for same content
