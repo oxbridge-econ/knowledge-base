@@ -2,7 +2,6 @@
 import threading
 import uuid
 from datetime import datetime
-import hashlib
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
@@ -336,8 +335,8 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
 
         # Extract essential query parameters
         query_params = {
-            field: existing_query_data.get(field) 
-            for field in essential_fields 
+            field: existing_query_data.get(field)
+            for field in essential_fields
             if existing_query_data.get(field) is not None
         }
         return JSONResponse(
