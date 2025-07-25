@@ -87,22 +87,53 @@ def preview(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     return JSONResponse(content=service.preview(body.model_dump()))
 
 @router.get("/query")
-def get_query(email: str = Query(...)) -> JSONResponse:
+def get_query(email: str = Query(...), query_id: str = Query(...)) -> JSONResponse:
     """
-    Submits an email query and stores or updates it in the MongoDB collection.
+    Retrieves a specific email query for a user from the MongoDB collection.
 
     Args:
-        body (EmailQuery): The email query data provided in the request body.
         email (str): The email address, provided as a query parameter.
+        query_id (str): The ID of the query to retrieve.
 
     Returns:
-        JSONResponse: A JSON response indicating
-        whether the query was successfully updated ("success")
-        or if there were no changes ("no changes").
+        JSONResponse: A JSON response containing the requested email query.
     """
-    result = collection.find_one({"_id": email}, projection={"query": 1})
-    del result["_id"]
-    return JSONResponse(content=result["query"] if "query" in result else {}, status_code=200)
+    required_fields = [
+        "id", "subject", "from_email", "to_email", "cc_email", "has_words", 
+        "not_has_words", "before", "after", "max_results", "topics"
+    ]
+
+    #check if user exists
+    user = collection.find_one({"_id": email})
+    if user is None:
+        return JSONResponse(content={"error": "User not found."}, status_code=404)
+
+    # Use aggregation to filter fields at database level
+    pipeline = [
+        {"$match": {"_id": email}},
+        {"$unwind": "$queries"},
+        {"$match": {"queries.id": query_id}},
+        {"$project": {
+            "_id": 0,
+            "query": {
+                "$arrayToObject": {
+                    "$filter": {
+                        "input": {"$objectToArray": "$queries"},
+                        "cond": {"$in": ["$$this.k", required_fields]}
+                    }
+                }
+            }
+        }}
+    ]
+
+    result = list(collection.aggregate(pipeline))
+    if not result:
+        return JSONResponse(
+            content={"error": f"Query with ID '{query_id}' not found for user."},
+            status_code=404
+        )
+
+    return JSONResponse(content=result[0]["query"], status_code=200)
 
 @router.get("")
 def valid(email: str = Query(...)) -> JSONResponse:
@@ -292,6 +323,10 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         "type": "manual",
         "query": query
     }
+    query["status"] = task["status"]
+    query["service"] = task["service"]
+    query["type"] = task["type"]
+    query["count"] = 0
     service = GmailService(credentials, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
@@ -305,7 +340,7 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     #     { '$set': data },
     #     upsert=True
     # )
-    query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
+    query["id"] = task["id"]
     upsert(email, task)
     task_states[task["id"]] = "Pending"
     upsert(email, query, collection=collection, size=10, field="queries")
