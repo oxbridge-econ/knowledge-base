@@ -378,6 +378,7 @@ def put_query(
 
     body = body.model_dump()
     query = {k: v for k, v in body.items() if v is not None}
+    query["id"] = query_id
     query["createdTime"] = query_exists["queries"][0].get("createdTime")
     query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
     del query["max_results"]
@@ -387,7 +388,30 @@ def put_query(
         {"$set": {"queries.$": query}}
     )
 
+    #start new task for updated query
+    credentials = get_user_credentials(email=email)
+    if not credentials.valid or credentials.expired:
+        return JSONResponse(content={"valid": False,
+                                     "error": "Invalid or expired credentials."}, status_code=401)
+    task = {
+        "id": f"{str(uuid.uuid4())}",
+        "status": "pending",
+        "service": "gmail",
+        "type": "manual",
+        "query": query
+    }
+    query["status"] = task["status"]
+    query["service"] = task["service"]
+    query["type"] = task["type"]
+    query["count"] = 0
+    service = GmailService(credentials, email, task)
+    threading.Thread(target=service.collect, args=[query]).start()
+
+    upsert(email, task)
+    task_states[task["id"]] = "Pending"
+    upsert(email, query, collection=collection, size=10, field="queries")
     if result.modified_count > 0:
-        return JSONResponse(content={"status": "success"}, status_code=200)
+        return JSONResponse(content={"status": "gmail collection started for updated query",
+                             "task": task}, status_code=200)
 
     return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
