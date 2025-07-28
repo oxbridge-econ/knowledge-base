@@ -338,8 +338,8 @@ def post_query(body: EmailFilter, email: str = Query(...),
 
     if query_id:
         return _handle_query_update(credentials, email, query_id, query, query_hash)
-    else:
-        return _handle_query_creation(credentials, email, query, query_hash)
+
+    return _handle_query_creation(credentials, email, query, query_hash)
 
 
 def _handle_query_update(credentials, email: str, query_id: str,
