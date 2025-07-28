@@ -123,23 +123,31 @@ def upsert(
 def generate_query_hash(query_params: dict) -> str:
     """
     Generate a unique hash for query parameters to detect duplicates.
-    Excludes metadata fields that shouldn't affect deduplication.
+    Uses an allowlist approach with specified fields.
     
     Args:
         query_params (dict): The query parameters dictionary
+        include_fields (list): List of fields to include in hash calculation.
+                              If None, uses default Gmail query fields.
         
     Returns:
         str: SHA-256 hash of the normalized query parameters
     """
-    # Fields to exclude from hash calculation (metadata fields)
-    excluded_fields = {
-        'max_results', 'status', 'service', 'type', 'count', 'id', 
-        'hash', 'createdTime', 'updatedTime'
-    }
+    # Default fields for Gmail queries if not specified
+    include_fields = [
+        'subject', 'from_email', 'to_email', 'cc_email', 
+        'has_words', 'not_has_words', 'before', 'after', 'topics'
+    ]
 
-    # Create a copy and remove excluded fields for hash calculation
-    normalized_query = {k: v for k, v in query_params.items()
-                       if k not in excluded_fields and v is not None}
+    # Create a copy and include only specified fields
+    normalized_query = {}
+    for field in include_fields:
+        if field in query_params and query_params[field] is not None:
+            value = query_params[field]
+            # Sort list values for consistent hashing
+            if isinstance(value, list):
+                value = sorted(value)
+            normalized_query[field] = value
 
     # Sort keys to ensure consistent hash for same content
     sorted_query = dict(sorted(normalized_query.items()))
@@ -147,3 +155,105 @@ def generate_query_hash(query_params: dict) -> str:
     # Convert to string and hash
     query_string = str(sorted_query)
     return hashlib.sha256(query_string.encode()).hexdigest()
+
+def extract_essential_query_fields(query_data: dict) -> dict:
+    """
+    Extract essential fields from a query for response formatting.
+    
+    Args:
+        query_data (dict): The full query data
+        
+    Returns:
+        dict: Dictionary containing only essential query fields
+    """
+    essential_fields = [
+        "id", "subject", "from_email", "to_email", "cc_email", 
+        "has_words", "not_has_words", "before", "after", "topics", "createdTime", "count",
+        "status", "service", "type"
+    ]
+
+    return {
+        field: query_data.get(field)
+        for field in essential_fields
+        if query_data.get(field) is not None
+    }
+
+def check_duplicate_query(collection, email: str,
+        query_hash: str, exclude_query_id: str = None) -> dict:
+    """
+    Check for duplicate queries in the collection.
+    
+    Args:
+        collection: MongoDB collection
+        email (str): User email
+        query_hash (str): Hash of the query to check
+        exclude_query_id (str): Query ID to exclude from duplicate check
+        
+    Returns:
+        dict: Existing query data if duplicate found, None otherwise
+    """
+    if exclude_query_id:
+        # For updates: find queries with same hash but different ID
+        match_filter = {
+            "_id": email,
+            "queries": {
+                "$elemMatch": {
+                    "hash": query_hash,
+                    "id": {"$ne": exclude_query_id}
+                }
+            }
+        }
+    else:
+        # For new queries: find any query with same hash
+        match_filter = {
+            "_id": email,
+            "queries": {
+                "$elemMatch": {
+                    "hash": query_hash
+                }
+            }
+        }
+
+    # Use aggregation to get the specific matching query
+    pipeline = [
+        {"$match": match_filter},
+        {"$unwind": "$queries"},
+        {"$match": {"queries.hash": query_hash}},
+        {"$project": {"query": "$queries", "_id": 0}}
+    ]
+
+    if exclude_query_id:
+        # Add additional match to exclude the specific query ID
+        pipeline.insert(2, {"$match": {"queries.id": {"$ne": exclude_query_id}}})
+
+    result = list(collection.aggregate(pipeline))
+
+    if result:
+        return result[0]["query"]
+    return None
+
+def prepare_query_for_storage(query_params: dict, task_id: str, query_hash: str) -> dict:
+    """
+    Prepare query parameters for storage in the database.
+    
+    Args:
+        query_params (dict): Raw query parameters
+        task_id (str): Task identifier
+        query_hash (str): Query hash
+        
+    Returns:
+        dict: Formatted query ready for storage
+    """
+    # Remove max_results as it's not stored
+    storage_query = {k: v for k, v in query_params.items() if k != "max_results"}
+
+    storage_query.update({
+        "id": task_id,
+        "hash": query_hash,
+        "status": "pending",
+        "service": "gmail",
+        "type": "manual",
+        "count": 0
+    })
+
+    return storage_query

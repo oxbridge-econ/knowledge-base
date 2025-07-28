@@ -8,7 +8,9 @@ from astrapy.constants import SortMode
 from services import GmailService, get_user_credentials
 from schema import EmailFilter, DocsReq, task_states
 from models.db import MongodbClient, astra_collection
-from controllers.utils import upsert, generate_query_hash
+from controllers.utils import (upsert, generate_query_hash, check_duplicate_query,
+    prepare_query_for_storage, extract_essential_query_fields
+)
 
 router = APIRouter(prefix="/service/gmail", tags=["service"])
 collection = MongodbClient["service"]["gmail"]
@@ -286,7 +288,8 @@ def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRes
     return JSONResponse(content={"error": "Failed to delete query"}, status_code=500)
 
 @router.post("/query")
-def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
+def post_query(body: EmailFilter, email: str = Query(...),
+        query_id:str = Query(None)) -> JSONResponse:
     """
     Collects Gmail data for a specified user and initiates an asynchronous collection task.
 
@@ -317,97 +320,32 @@ def post_query(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
                                      "error": "Invalid or expired credentials."}, status_code=401)
     body = body.model_dump()
     query = {k: v for k, v in body.items() if v is not None}
-
+    del query["max_results"]
     query_hash = generate_query_hash(query)
     # Check for existing query with same hash
-    existing_query = collection.find_one(
-        {"_id": email, "queries.hash": query_hash},
-        projection={"queries.$": 1}
-    )
+    existing_query = check_duplicate_query(collection, email, query_hash, query_id)
 
     if existing_query:
-        existing_query_data = existing_query["queries"][0]
-        # Define essential fields to include in response
-        essential_fields = [
-            "subject", "from_email", "to_email", "cc_email", 
-            "has_words", "not_has_words", "before", "after", "topics"
-        ]
-
-        # Extract essential query parameters
-        query_params = {
-            field: existing_query_data.get(field)
-            for field in essential_fields
-            if existing_query_data.get(field) is not None
-        }
+        essential_fields = extract_essential_query_fields(existing_query)
         return JSONResponse(
             content={
                 "message": "Duplicate query detected. Returning existing query.",
-                "existing_query": {
-                    "query_parameters": query_params,
-                    "id": existing_query_data.get("id"),
-                    "status": existing_query_data.get("status"),
-                    "service": existing_query_data.get("service"),
-                    "type": existing_query_data.get("type"),
-                    "createdTime": existing_query_data.get("createdTime"),
-                    "updatedTime": existing_query_data.get("updatedTime"),
-                    "count": existing_query_data.get("count", 0)
-                }
+                "existing_query": essential_fields
             },
             status_code=200
         )
 
 
-    task = {
-        "id": f"{str(uuid.uuid4())}",
-        "status": "pending",
-        "service": "gmail",
-        "type": "manual",
-        "query": query
-    }
+    if query_id:
+        return _handle_query_update(credentials, email, query_id, query, query_hash)
+    else:
+        return _handle_query_creation(credentials, email, query, query_hash)
 
-    query["status"] = task["status"]
-    query["service"] = task["service"]
-    query["type"] = task["type"]
-    query["count"] = 0
-    service = GmailService(credentials, email, task)
-    threading.Thread(target=service.collect, args=[query]).start()
-    del query["max_results"]
 
-    # data = {
-    #     "_id": email,
-    #     "query": query
-    # }
-    # collection.update_one(
-    #     { '_id': email },
-    #     { '$set': data },
-    #     upsert=True
-    # )
-    query["id"] = task["id"]
-    query["hash"] = query_hash
-    upsert(email, task)
-    task_states[task["id"]] = "Pending"
-    upsert(email, query, collection=collection, size=10, field="queries")
-    return JSONResponse(content=task)
-
-@router.put("/query")
-def put_query(
-    body: EmailFilter, email: str = Query(...), query_id: str = Query(...)
-    ) -> JSONResponse:
-    """
-    Updates an existing email query for a user in the MongoDB collection.
-
-    Args:
-        body (EmailFilter): The updated email query data.
-        email (str): The user's email address, provided as a query parameter.
-
-    Returns:
-        JSONResponse: A JSON response indicating whether the update was successful or not.
-    """
-    user = collection.find_one({"_id": email})
-    if user is None:
-        return JSONResponse(content={"error": "User not found."}, status_code=404)
-
-    # Check if query exists before updating
+def _handle_query_update(credentials, email: str, query_id: str,
+    query_params: dict, query_hash: str) -> JSONResponse:
+    """Handle updating an existing query."""
+    # Check if query exists
     query_exists = collection.find_one(
         {"_id": email, "queries.id": query_id},
         projection={"queries.$": 1}
@@ -418,69 +356,75 @@ def put_query(
             status_code=404
         )
 
-    body = body.model_dump()
-    query = {k: v for k, v in body.items() if v is not None}
+    # Create task and prepare storage query
+    task_id = str(uuid.uuid4())
+    task = {
+        "id": task_id,
+        "status": "pending",
+        "service": "gmail",
+        "type": "manual",
+        "query": query_params
+    }
 
-    # Generate new hash for the updated query
-    query_hash = generate_query_hash(query)
+    storage_query = prepare_query_for_storage(query_params, query_id, query_hash)
+    storage_query["createdTime"] = query_exists["queries"][0].get("createdTime")
+    storage_query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
 
-    # Check if updated query would create a duplicate (excluding current query)
-    duplicate_query = collection.find_one(
-        {
-            "_id": email, 
-            "queries": {
-                "$elemMatch": {
-                    "hash": query_hash,
-                    "id": {"$ne": query_id}
-                }
-            }
-        },
-        projection={"queries.$": 1}
-    )
-
-    if duplicate_query:
-        return JSONResponse(
-            content={
-                "error": "Updated query would create a duplicate.",
-                "duplicate_query_id": duplicate_query["queries"][0].get("id")
-            },
-            status_code=409
-        )
-
-    query["id"] = query_id
-    query["hash"] = query_hash
-    query["createdTime"] = query_exists["queries"][0].get("createdTime")
-    query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-    del query["max_results"]
-    # Update the query in the database
+    # Update in database
     result = collection.update_one(
         {"_id": email, "queries.id": query_id},
-        {"$set": {"queries.$": query}}
+        {"$set": {"queries.$": storage_query}}
     )
-
     if result.modified_count > 0:
-        credentials = get_user_credentials(email=email)
-        if not credentials.valid or credentials.expired:
-            return JSONResponse(content={"valid": False,
-            "error": "Invalid or expired credentials. Could not start collection"}, status_code=401)
-        task = {
-            "id": f"{str(uuid.uuid4())}",
-            "status": "pending",
-            "service": "gmail",
-            "type": "manual",
-            "query": query
-        }
-        query["status"] = task["status"]
-        query["service"] = task["service"]
-        query["type"] = task["type"]
-        query["count"] = 0
-        service = GmailService(credentials, email, task)
-        threading.Thread(target=service.collect, args=[query]).start()
+        _start_collection_task(credentials, email, task, storage_query)
+        upsert(email, storage_query, collection=collection, size=10, field="queries")
 
-        upsert(email, task)
-        task_states[task["id"]] = "Pending"
-        upsert(email, query, collection=collection, size=10, field="queries")
-        return JSONResponse(content={"status": "query updated and collection started",
-             "task": task}, status_code=200)
+        return JSONResponse(
+            content={
+                "status": "query updated and collection started",
+                "task": task
+            },
+            status_code=200
+        )
 
     return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
+
+
+def _handle_query_creation(credentials, email: str,
+        query_params: dict, query_hash: str) -> JSONResponse:
+    """Handle creating a new query."""
+    # Create task
+    task_id = str(uuid.uuid4())
+    task = {
+        "id": task_id,
+        "status": "pending",
+        "service": "gmail",
+        "type": "manual",
+        "query": query_params
+    }
+
+    # Prepare storage query
+    storage_query = prepare_query_for_storage(query_params, task_id, query_hash)
+
+    # Start collection task
+    _start_collection_task(credentials, email, task, storage_query)
+    upsert(email, storage_query, collection=collection, size=10, field="queries")
+
+    return JSONResponse(content=task)
+
+def _start_collection_task(credentials, email: str, task: dict, query: dict) -> None:
+    """
+    Helper function to start a Gmail collection task.
+    
+    Args:
+        credentials: Gmail API credentials
+        email (str): User email
+        task (dict): Task information
+        query (dict): Query parameters
+    """
+    service = GmailService(credentials, email, task)
+    threading.Thread(target=service.collect, args=[query]).start()
+
+    # Update task states and database
+    upsert(email, task)
+    task_states[task["id"]] = "Pending"
