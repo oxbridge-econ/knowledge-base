@@ -43,7 +43,7 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
     task_states[task["id"]] = "Pending"
     upsert(email, task)
     try:
-
+        upload_file_to_azure(content, file.filename, email)
         if file.content_type == "application/pdf":
             threading.Thread(
             target=load_pdf, args=(content, file.filename,
@@ -66,7 +66,6 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
                 status_code=400,
                 detail="Invalid file type. Only PDF, TXT, and DOCX are allowed."
             )
-        upload_file_to_azure(content, file.filename, email)
     except FileAlreadyExistsError as e:
         task["status"] = "failed"
         task_states[task["id"]] = "Failed"
