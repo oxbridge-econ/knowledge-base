@@ -101,9 +101,11 @@ class GmailService():
         if 'before' in params and params['before']:
             query_parts.append(f'before:{params["before"]}')
         if 'has_words' in params and params['has_words']:
-            query_parts.append(f'"{params["has_words"]}"')
+            query_parts.append(params["has_words"])
         if 'not_has_words' in params and params['not_has_words']:
-            query_parts.append(f'-"{params["not_has_words"]}"')
+            query_parts.append(f'-{params["not_has_words"]}')
+        if 'has_attachment' in params and params['has_attachment']:
+            query_parts.append('has:attachment')
         return ' '.join(query_parts)
 
     def _search(self, query, max_results=200, check_next_page=False) -> list:
