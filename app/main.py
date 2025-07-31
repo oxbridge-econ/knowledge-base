@@ -1,13 +1,5 @@
 """Module to handle the main FastAPI application and its endpoints."""
 import logging
-import json
-import importlib
-from contextlib import asynccontextmanager
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.schedulers import SchedulerNotRunningError
-
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
