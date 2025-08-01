@@ -417,15 +417,15 @@ class GmailService():
         self.task['status'] = "in progress"
         upsert(self.email, self.task)
         if self.task["type"] == "manual":
-            query["status"] = "in progress"
+            query["task"]["status"] = "in progress"
             upsert(self.email, query, collection=collection, size=10, field="queries")
         logger.info(" Task %s status updated to 'in progress'", self.task["id"])
 
     def _update_query_status(self, query, messages_processed):
         """Update the query status in the task."""
         if self.task["type"] == "manual":
-            query["status"] = self.task["status"]
-            query["count"] = messages_processed
+            query["task"]["status"] = self.task["status"]
+            query["task"]["count"] = messages_processed
             query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self.task["query"] = query
             upsert(self.email, query, collection=collection, size=10, field="queries")

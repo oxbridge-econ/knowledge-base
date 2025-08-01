@@ -188,16 +188,16 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     for query in user_data["queries"]:
         processed_query = {
             "id": query.get("id", "unknown"),
-            "status": query.get("status", "unknown"),
+            "status": query["task"]["status"] if "task" in query else query.get("status", "unknown"),
             "filters": {
                 key: value for key, value in query.items()
                 if key in ["subject", "from_email", "to_email", "cc_email",
                           "has_words", "not_has_words", "before", "after", "topics"]
                 and value is not None
             },
-            "count": query.get("count", 0),
-            "service": query.get("service", ""),
-            "type": query.get("type", ""),
+            "count": query["task"]["count"] if "task" in query else query.get("count", 0),
+            "service": query["task"]["service"] if "task" in query else query.get("service", ""),
+            "type": query["task"]["type"] if "task" in query else query.get("type", ""),
             "createdTime": query.get("createdTime", ""),
         }
         processed_queries.append(processed_query)
