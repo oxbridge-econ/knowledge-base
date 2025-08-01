@@ -188,7 +188,8 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     for query in user_data["queries"]:
         processed_query = {
             "id": query.get("id", "unknown"),
-            "status": query["task"]["status"] if "task" in query else query.get("status", "unknown"),
+            "status": (query["task"]["status"] if "task" in
+                        query else query.get("status", "unknown")),
             "filters": {
                 key: value for key, value in query.items()
                 if key in ["subject", "from_email", "to_email", "cc_email",
