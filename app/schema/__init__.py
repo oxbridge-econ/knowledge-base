@@ -36,6 +36,7 @@ class EmailFilter(BaseModel):
     max_results: Optional[int] = Field(10, alias="maxResults")
     # topic_detect: Optional[bool] = False
     topics: Optional[List[str]] = []
+    has_attachment: Optional[bool] = Field(False, alias="hasAttachment")
 
     @classmethod
     def validate_before_after(

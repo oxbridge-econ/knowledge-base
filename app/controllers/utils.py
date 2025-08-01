@@ -136,7 +136,7 @@ def generate_query_hash(query_params: dict) -> str:
     # Default fields for Gmail queries if not specified
     include_fields = [
         'subject', 'from_email', 'to_email', 'cc_email', 
-        'has_words', 'not_has_words', 'before', 'after', 'topics'
+        'has_words', 'not_has_words', 'before', 'after', 'topics', "has_attachment"
     ]
 
     # Create a copy and include only specified fields
@@ -168,7 +168,8 @@ def extract_essential_query_fields(query_data: dict) -> dict:
     """
     essential_fields = [
         "id", "subject", "from_email", "to_email", "cc_email", 
-        "has_words", "not_has_words", "before", "after", "topics", "createdTime", "count",
+        "has_words", "not_has_words", "before", "after", "topics", "has_attachment",
+        "createdTime", "count",
         "status", "service", "type"
     ]
 

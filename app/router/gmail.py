@@ -369,7 +369,6 @@ def _handle_query_update(credentials, email: str, query_id: str,
     )
     if result.modified_count > 0:
         _start_collection_task(credentials, email, task, storage_query)
-        upsert(email, storage_query, collection=collection, size=10, field="queries")
 
         return JSONResponse(
             content={
@@ -400,7 +399,6 @@ def _handle_query_creation(credentials, email: str,
 
     # Start collection task
     _start_collection_task(credentials, email, task, storage_query)
-    upsert(email, storage_query, collection=collection, size=10, field="queries")
 
     return JSONResponse(content=task)
 
