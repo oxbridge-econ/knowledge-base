@@ -251,10 +251,12 @@ def prepare_query_for_storage(query_params: dict, task_id: str, query_hash: str)
     storage_query.update({
         "id": task_id,
         "hash": query_hash,
-        "status": "pending",
-        "service": "gmail",
-        "type": "manual",
-        "count": 0
+        "task":{
+            "status": "pending",
+            "service": "gmail",
+            "type": "manual",
+            "count": 0
+        }
     })
 
     return storage_query
