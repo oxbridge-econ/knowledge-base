@@ -188,16 +188,17 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     for query in user_data["queries"]:
         processed_query = {
             "id": query.get("id", "unknown"),
-            "status": query.get("status", "unknown"),
+            "status": (query["task"]["status"] if "task" in
+                        query else query.get("status", "unknown")),
             "filters": {
                 key: value for key, value in query.items()
                 if key in ["subject", "from_email", "to_email", "cc_email",
                           "has_words", "not_has_words", "before", "after", "topics"]
                 and value is not None
             },
-            "count": query.get("count", 0),
-            "service": query.get("service", ""),
-            "type": query.get("type", ""),
+            "count": query["task"]["count"] if "task" in query else query.get("count", 0),
+            "service": query["task"]["service"] if "task" in query else query.get("service", ""),
+            "type": query["task"]["type"] if "task" in query else query.get("type", ""),
             "createdTime": query.get("createdTime", ""),
         }
         processed_queries.append(processed_query)
@@ -369,7 +370,6 @@ def _handle_query_update(credentials, email: str, query_id: str,
     )
     if result.modified_count > 0:
         _start_collection_task(credentials, email, task, storage_query)
-        upsert(email, storage_query, collection=collection, size=10, field="queries")
 
         return JSONResponse(
             content={
@@ -400,7 +400,6 @@ def _handle_query_creation(credentials, email: str,
 
     # Start collection task
     _start_collection_task(credentials, email, task, storage_query)
-    upsert(email, storage_query, collection=collection, size=10, field="queries")
 
     return JSONResponse(content=task)
 
