@@ -330,9 +330,9 @@ def post_query(body: EmailFilter, email: str = Query(...),
         return JSONResponse(
             content={
                 "message": "Duplicate query detected. Returning existing query.",
-                "existing_query": essential_fields
+                "query": essential_fields
             },
-            status_code=200
+            status_code=409
         )
 
 
