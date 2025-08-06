@@ -4,7 +4,7 @@ This module provides a utility class, `GmailService`, for interacting with the G
 import base64
 import hashlib
 import os
-import uuid
+
 
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
