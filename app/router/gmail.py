@@ -223,7 +223,7 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
     results = list(astra_collection.find(
         filter=_filter,
         projection={"metadata.msgId": 1},
-        sort={"metadata.date": SortMode.ASCENDING},
+        sort={"metadata.date": SortMode.DESCENDING},
         skip=body.skip or 0,
         limit=body.limit or 10
     ))
