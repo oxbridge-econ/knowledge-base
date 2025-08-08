@@ -193,7 +193,7 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
             "filters": {
                 key: value for key, value in query.items()
                 if key in ["subject", "from_email", "to_email", "cc_email",
-                          "has_words", "not_has_words", "before", "after", "topics"]
+                          "has_words", "not_has_words", "before", "after", "topics", "has_attachment"]
                 and value is not None
             },
             "count": query["task"]["count"] if "task" in query else query.get("count", 0),
