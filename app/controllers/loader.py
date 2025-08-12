@@ -525,6 +525,35 @@ def get_content_type_from_extension(extension: str) -> str:
             return content_type
     return None
 
+def is_system_file(filename: str, file_path: str) -> bool:
+    """
+    Check if a file is a system/metadata file that should be skipped.
+    
+    Args:
+        filename: The filename extracted from the path
+        file_path: The full file path in the ZIP
+        
+    Returns:
+        bool: True if the file should be skipped
+    """
+    # Hidden files and temporary files
+    if filename.startswith('.') or filename.startswith('~') or filename.startswith('$'):
+        return True
+
+    # Windows system files
+    if filename.lower() in ['thumbs.db', 'desktop.ini'] or filename.lower().endswith('.tmp'):
+        return True
+
+    # macOS metadata
+    if '__MACOSX' in file_path or filename.startswith('._'):
+        return True
+
+    # Empty or whitespace-only filenames
+    if filename == '' or len(filename.strip()) == 0:
+        return True
+
+    return False
+
 def process_zip_file(content: bytes, email: str, main_task: dict):
     """
     Process ZIP file content and extract all files.
@@ -552,18 +581,7 @@ def process_zip_file(content: bytes, email: str, main_task: dict):
                 filename = file_path.split('/')[-1]
 
                 # Skip system files from all platforms
-                if (
-                    filename.startswith('.') or  # Hidden files (Unix/Linux/macOS)
-                    filename.startswith('~') or  # Temporary files (Windows/Office)
-                    filename.startswith('$') or  # Windows system files
-                    filename.lower() == 'thumbs.db' or  # Windows thumbnail cache
-                    filename.lower() == 'desktop.ini' or  # Windows folder settings
-                    filename.lower().endswith('.tmp') or  # Temporary files
-                    '__MACOSX' in file_path or  # macOS metadata folder
-                    filename.startswith('._') or  # macOS resource forks
-                    filename == '' or  # Empty filename
-                    len(filename.strip()) == 0  # Whitespace-only filename
-                ):
+                if is_system_file(filename, file_path):
                     logger.debug("Skipping system/metadata file: %s", file_path)
                     continue
                 # Get file extension and check if it's allowed
