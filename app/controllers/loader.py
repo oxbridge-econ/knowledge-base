@@ -3,6 +3,9 @@ import base64
 import hashlib
 import json
 import os
+import zipfile
+import uuid
+
 from io import BytesIO
 import threading
 from datetime import datetime, timedelta
@@ -30,6 +33,13 @@ text_splitter = RecursiveCharacterTextSplitter()
 AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
 AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
 
+ALLOWED_FILE_TYPES = {
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "image/png": ".png",
+    "image/jpeg": ".jpg"
+}
 
 class FileAlreadyExistsError(Exception):
     """Custom exception raised when a file already exists in Azure Blob Storage."""
@@ -356,7 +366,7 @@ def upload_file_to_azure(
         )
 
         logger.info("File uploaded successfully to %s", blob_path)
-    except FileExistsError as e:
+    except FileAlreadyExistsError as e:
         logger.error("File already exists at %s: %s" , blob_path, e)
         raise e
     except AzureError as e:
@@ -498,3 +508,182 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
     except (ConnectionError, TimeoutError, ValueError) as e:
         logger.error("Unexpected error deleting file %s: %s", file_name, e)
         return {"success": False, "error": str(e)}
+
+def get_content_type_from_extension(extension: str) -> str:
+    """
+    Get content type from file extension using the existing ALLOWED_FILE_TYPES mapping.
+    
+    Args:
+        extension: File extension (e.g., '.pdf', '.docx')
+        
+    Returns:
+        str: MIME content type or None if not allowed
+    """
+    # Reverse lookup in ALLOWED_FILE_TYPES
+    for content_type, ext in ALLOWED_FILE_TYPES.items():
+        if ext == extension:
+            return content_type
+    return None
+
+def process_zip_file(content: bytes, email: str, main_task: dict):
+    """
+    Process ZIP file content and extract all files.
+    
+    Args:
+        content: ZIP file content as bytes
+        email: User email
+        main_task: Main task dictionary to track overall progress
+    """
+    try:
+        # Use in-memory processing for Azure Web Service compatibility
+        zip_buffer = BytesIO(content)
+        extracted_files = []
+
+        with zipfile.ZipFile(zip_buffer, 'r') as zip_ref:
+            # Get list of all files in the ZIP
+            file_list = zip_ref.namelist()
+
+            for file_path in file_list:
+                # Skip directories and hidden files
+                if file_path.endswith('/') or file_path.startswith('.'):
+                    continue
+
+                # Extract just the filename from the path (after last /)
+                filename = file_path.split('/')[-1]
+
+                # Skip system files from all platforms
+                if (
+                    filename.startswith('.') or  # Hidden files (Unix/Linux/macOS)
+                    filename.startswith('~') or  # Temporary files (Windows/Office)
+                    filename.startswith('$') or  # Windows system files
+                    filename.lower() == 'thumbs.db' or  # Windows thumbnail cache
+                    filename.lower() == 'desktop.ini' or  # Windows folder settings
+                    filename.lower().endswith('.tmp') or  # Temporary files
+                    '__MACOSX' in file_path or  # macOS metadata folder
+                    filename.startswith('._') or  # macOS resource forks
+                    filename == '' or  # Empty filename
+                    len(filename.strip()) == 0  # Whitespace-only filename
+                ):
+                    logger.debug("Skipping system/metadata file: %s", file_path)
+                    continue
+                # Get file extension and check if it's allowed
+                file_ext = os.path.splitext(filename)[1].lower()
+                content_type = get_content_type_from_extension(file_ext)
+
+                if content_type in ALLOWED_FILE_TYPES:
+                    try:
+                        file_content = zip_ref.read(file_path)
+                        extracted_files.append((file_content, filename, content_type))
+                    except Exception as e:  # pylint: disable=broad-except
+                        logger.warning("Error extracting file %s: %s", file_path, e)
+                        main_task["failed_files"].append({
+                            "filename": filename,
+                            "error": f"Extraction failed: {str(e)}"
+                        })
+                else:
+                    logger.warning("Skipping unsupported file type: %s", file_path)
+                    main_task["failed_files"].append({
+                        "filename": filename,
+                        "error": "Unsupported file type"
+                    })
+
+        main_task["total_files"] = len(extracted_files) + len(main_task["failed_files"])
+        main_task["status"] = "in_progress"
+        upsert(email, main_task)
+        task_states[main_task["id"]] = "In Progress"
+
+        # Process each extracted file
+        process_extracted_files(extracted_files, email, main_task)
+
+    except zipfile.BadZipFile:
+        main_task["status"] = "failed"
+        main_task["failed_files"].append({
+            "filename": "ZIP file",
+            "error": "Invalid ZIP file format"
+        })
+        task_states[main_task["id"]] = "Failed"
+        upsert(email, main_task)
+    except Exception as e:  # pylint: disable=broad-except
+        logger.error("Error in process_zip_file: %s", e)
+        main_task["status"] = "failed"
+        task_states[main_task["id"]] = "Failed"
+        upsert(email, main_task)
+
+
+def process_extracted_files(extracted_files, email: str, main_task: dict):
+    """
+    Process all extracted files from the ZIP.
+    
+    Args:
+        extracted_files: List of tuples (file_content, file_path, content_type)
+        email: User email
+        main_task: Main task dictionary to track overall progress
+    """
+    try:
+        for file_content, file_name, content_type in extracted_files:
+            try:
+                # Create individual task for this file
+                file_task = {
+                    "id": f"file_{str(uuid.uuid4())}",
+                    "status": "pending",
+                    "service": "file",
+                    "type": "folder_upload",
+                    "parent_task": main_task["id"]
+                }
+                task_states[file_task["id"]] = "Pending"
+                upsert(email, file_task)
+
+                # Upload to Azure (maintaining folder structure from ZIP)
+                upload_file_to_azure(file_content, file_name, email, content_type)
+
+                # Process based on file type using existing logic
+                if content_type == "application/pdf":
+                    load_pdf(file_content, file_name, email, file_task)
+                elif (content_type ==
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+                    load_docx(file_content, file_name, email, file_task)
+                elif content_type in ["image/png", "image/jpeg"]:
+                    load_img(file_content, file_name, email, file_task)
+
+                main_task["successful_files"].append(file_name)
+
+            except FileAlreadyExistsError:
+                logger.warning("File already exists: %s", file_name)
+                file_task["status"] = "failed"
+                task_states[file_task["id"]] = "Failed"
+                upsert(email, file_task)
+                main_task["failed_files"].append({
+                    "filename": file_name,
+                    "error": "File already exists"
+                })
+            except Exception as e: # pylint: disable=broad-except
+                logger.error("Error processing file %s: %s", file_name, e)
+                file_task["status"] = "failed"
+                task_states[file_task["id"]] = "Failed"
+                upsert(email, file_task)
+                main_task["failed_files"].append({
+                    "filename": file_name,
+                    "error": str(e)
+                })
+            main_task["files_processed"] += 1
+            upsert(email, main_task)
+
+        # Update final status
+        if len(main_task["failed_files"]) == 0:
+            main_task["status"] = "completed"
+            task_states[main_task["id"]] = "Completed"
+
+        elif len(main_task["successful_files"]) > 0:
+            main_task["status"] = "partially_completed"
+            task_states[main_task["id"]] = "Partially Completed"
+        else:
+            main_task["status"] = "failed"
+            task_states[main_task["id"]] = "Failed"
+
+        upsert(email, main_task)
+
+    except Exception as e: # pylint: disable=broad-except
+        logger.error("Error in process_extracted_files: %s", e)
+        main_task["status"] = "failed"
+        task_states[main_task["id"]] = "Failed"
+        upsert(email, main_task)
