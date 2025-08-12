@@ -1,7 +1,6 @@
 """Module for defining the main routes of the API."""
 import uuid
 import threading
-import zipfile
 from venv import logger
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -15,13 +14,6 @@ from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])
 
-ALLOWED_FILE_TYPES = {
-    "application/pdf": ".pdf",
-    "text/plain": ".txt",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    "image/png": ".png",
-    "image/jpeg": ".jpg"
-}
 
 @router.post("")
 async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONResponse:
