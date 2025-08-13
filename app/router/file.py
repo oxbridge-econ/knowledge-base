@@ -27,6 +27,10 @@ async def load(files: List[UploadFile] = File(...), email: str = Query(...)) -> 
     Returns:
         str: The generated response from the chat function.
     """
+    if len(files)  > 10:
+        return JSONResponse(status_code=400,
+            content={"error": "Too many files uploaded. Please upload up to 10 files."}
+        )
     tasks = []
     for file in files:
         content = await file.read()
