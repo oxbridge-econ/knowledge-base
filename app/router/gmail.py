@@ -179,13 +179,22 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     if user is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
 
-    user_data = collection.find_one({"_id": email}, projection={"queries": 1})
-
-    if not user_data or "queries" not in user_data:
+    pipeline = [
+        {"$match": {"_id": email}},
+        {"$unwind": "$queries"},
+        {"$sort": {"queries.createdTime": -1}},
+        {"$group": {
+            "_id": "$_id",
+            "queries": {"$push": "$queries"}
+        }},
+        {"$project": {"queries": 1}}
+    ]
+    result = list(collection.aggregate(pipeline))
+    if not result or "queries" not in result[0]:
         return JSONResponse(content={"queries": []}, status_code=200)
 
     processed_queries = []
-    for query in user_data["queries"]:
+    for query in result[0]["queries"]:
         processed_query = {
             "id": query.get("id", "unknown"),
             "status": (query["task"]["status"] if "task" in
@@ -193,7 +202,8 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
             "filters": {
                 key: value for key, value in query.items()
                 if key in ["subject", "from_email", "to_email", "cc_email",
-                          "has_words", "not_has_words", "before", "after", "topics"]
+                          "has_words", "not_has_words", "before", "after",
+                          "topics", "has_attachment"]
                 and value is not None
             },
             "count": query["task"]["count"] if "task" in query else query.get("count", 0),
