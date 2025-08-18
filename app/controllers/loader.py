@@ -30,6 +30,13 @@ text_splitter = RecursiveCharacterTextSplitter()
 AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
 AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
 
+ALLOWED_FILE_TYPES = {
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "image/png": ".png",
+    "image/jpeg": ".jpg"
+}
 
 class FileAlreadyExistsError(Exception):
     """Custom exception raised when a file already exists in Azure Blob Storage."""
@@ -173,10 +180,11 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
             documents.append(doc)
         os.remove(path)
         threading.Thread(target=upload, args=[documents, email, task]).start()
-    except (FileNotFoundError, ValueError, OSError):
+    except (FileNotFoundError, ValueError, OSError, Exception) as e: # pylint: disable=broad-except
         if os.path.exists(path):
             os.remove(path)
         task["status"] = "failed"
+        task["error"] = str(e)
         upsert(email, task)
         task_states[task["id"]] = "Failed"
 
@@ -353,7 +361,7 @@ def upload_file_to_azure(
         )
 
         logger.info("File uploaded successfully to %s", blob_path)
-    except FileExistsError as e:
+    except FileAlreadyExistsError as e:
         logger.error("File already exists at %s: %s" , blob_path, e)
         raise e
     except AzureError as e:

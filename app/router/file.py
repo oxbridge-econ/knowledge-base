@@ -2,6 +2,7 @@
 import uuid
 import threading
 from venv import logger
+from typing import List
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from fastapi.responses import JSONResponse
 from controllers.utils import upsert
@@ -14,16 +15,9 @@ from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])
 
-ALLOWED_FILE_TYPES = {
-    "application/pdf": ".pdf",
-    "text/plain": ".txt",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    "image/png": ".png",
-    "image/jpeg": ".jpg"
-}
 
 @router.post("")
-async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONResponse:
+async def load(files: List[UploadFile] = File(...), email: str = Query(...)) -> JSONResponse:
     """
     Handles the chat POST request.
 
@@ -33,49 +27,55 @@ async def load(file: UploadFile = File(...), email: str = Query(...)) -> JSONRes
     Returns:
         str: The generated response from the chat function.
     """
-    content = await file.read()
-    task = {
-        "id": f"{str(uuid.uuid4())}",
-        "status": "pending",
-        "service": "file",
-        "type": "manual"
-    }
-    task_states[task["id"]] = "Pending"
-    upsert(email, task)
-    try:
-        upload_file_to_azure(content, file.filename, email)
-        if file.content_type == "application/pdf":
-            threading.Thread(
-            target=load_pdf, args=(content, file.filename,
-            email, task)
-            ).start()
-        elif file.content_type == \
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            threading.Thread(
-                target=load_docx, args=(content, file.filename, email, task)
+    if len(files)  > 10:
+        return JSONResponse(status_code=400,
+            content={"error": "Too many files uploaded. Please upload up to 10 files."}
+        )
+    tasks = []
+    for file in files:
+        content = await file.read()
+        task = {
+            "id": f"{str(uuid.uuid4())}",
+            "status": "pending",
+            "service": "file",
+            "type": "manual"
+        }
+        task_states[task["id"]] = "Pending"
+        upsert(email, task)
+        try:
+
+            if file.content_type == "application/pdf":
+                threading.Thread(
+                target=load_pdf, args=(content, file.filename,
+                email, task)
                 ).start()
-        elif file.content_type in ["image/png", "image/jpeg"]:
-            threading.Thread(
-                target=load_img, args=(content, file.filename, email, task)
-            ).start()
-        else:
+            elif file.content_type == \
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                threading.Thread(
+                    target=load_docx, args=(content, file.filename, email, task)
+                    ).start()
+            elif file.content_type in ["image/png", "image/jpeg"]:
+                threading.Thread(
+                    target=load_img, args=(content, file.filename, email, task)
+                ).start()
+            else:
+                task["status"] = "failed"
+                task["error"] = f"Unsupported file type: {file.content_type}"
+                task_states[task["id"]] = "Failed"
+                upsert(email, task)
+                tasks.append(task)
+                continue
+            upload_file_to_azure(content, file.filename, email)
+
+        except (FileAlreadyExistsError, Exception)as e: # pylint: disable=broad-except
             task["status"] = "failed"
+            task["error"] = str(e)
             task_states[task["id"]] = "Failed"
             upsert(email, task)
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid file type. Only PDF, TXT, and DOCX are allowed."
-            )
-    except FileAlreadyExistsError as e:
-        task["status"] = "failed"
-        task_states[task["id"]] = "Failed"
-        upsert(email, task)
-        raise HTTPException(
-            status_code=409,  # 409 Conflict status code for duplicate resource
-            detail=str(e)
-        ) from e
 
-    return JSONResponse(content=task)
+        tasks.append(task)
+
+    return JSONResponse(content=tasks)
 
 @router.get("")
 async def get_azure_files(email: str = Query(...)) -> JSONResponse:
