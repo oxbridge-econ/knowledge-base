@@ -183,15 +183,11 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
     except (FileNotFoundError, ValueError, OSError, Exception) as e: # pylint: disable=broad-except
         if os.path.exists(path):
             os.remove(path)
-        os.remove(path)
         task["status"] = "failed"
         task["error"] = str(e)
         upsert(email, task)
         task_states[task["id"]] = "Failed"
 
-    task["status"] = "completed"
-    upsert(email, task)
-    task_states[task["id"]] = "Completed"
 
 def load_img(content: bytes, filename: str, email: str, task: dict):
     """
@@ -224,9 +220,6 @@ def load_img(content: bytes, filename: str, email: str, task: dict):
         task["status"] = "failed"
         upsert(email, task)
         task_states[task["id"]] = "Failed"
-    task["status"] = "completed"
-    upsert(email, task)
-    task_states[task["id"]] = "Completed"
 
 
 def load_docx(content: bytes, filename: str, email: str, task: dict):
@@ -263,10 +256,6 @@ def load_docx(content: bytes, filename: str, email: str, task: dict):
         upsert(email, task)
         task_states[task["id"]] = "Failed"
 
-    task["status"] = "completed"
-    upsert(email, task)
-    task_states[task["id"]] = "Completed"
-
 
 def upload(docs: list[Document], email: str, task: dict):
     """
@@ -295,29 +284,37 @@ def upload(docs: list[Document], email: str, task: dict):
     """
     documents = []
     ids = []
-    for doc in docs:
-        for index, document in enumerate(text_splitter.split_documents([doc])):
-            if "page_label" in document.metadata:
-                document.metadata["page"] = int(document.metadata["page_label"])
-            attachment = document.metadata["source"].replace("{FOLDER}/", "")
-            document.metadata["title"] = attachment.split(".")[0]
-            document.metadata["ext"] = attachment.split(".")[-1]
-            document.metadata = {
-                key: value
-                for key, value in document.metadata.items()
-                if key in ["page", "title", "ext"]
-            }
-            document.metadata["id"] = str(
-                hashlib.sha256((email + attachment).encode()).hexdigest())
-            document.metadata["userId"] = email
-            document.metadata["type"] = "file"
-            if "page" in document.metadata:
-                ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
-            else:
-                ids.append(f"{document.metadata['id']}-{index}")
-            documents.append(document)
-    vstore.add_documents_with_retry(documents, ids, task)
-
+    try:
+        for doc in docs:
+            for index, document in enumerate(text_splitter.split_documents([doc])):
+                if "page_label" in document.metadata:
+                    document.metadata["page"] = int(document.metadata["page_label"])
+                attachment = document.metadata["source"].replace("{FOLDER}/", "")
+                document.metadata["title"] = attachment.split(".")[0]
+                document.metadata["ext"] = attachment.split(".")[-1]
+                document.metadata = {
+                    key: value
+                    for key, value in document.metadata.items()
+                    if key in ["page", "title", "ext"]
+                }
+                document.metadata["id"] = str(
+                    hashlib.sha256((email + attachment).encode()).hexdigest())
+                document.metadata["userId"] = email
+                document.metadata["type"] = "file"
+                if "page" in document.metadata:
+                    ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
+                else:
+                    ids.append(f"{document.metadata['id']}-{index}")
+                documents.append(document)
+        vstore.add_documents_with_retry(documents, ids, task)
+        task["status"] = "completed"
+        upsert(email, task)
+        task_states[task["id"]] = "Completed"
+    except (ConnectionError, TimeoutError, KeyError, ValueError, TypeError, AttributeError) as e:
+        logger.error("Error processing documents: %s", e)
+        task["status"] = "failed"
+        upsert(email, task)
+        task_states[task["id"]] = "Failed"
 
 
 def upload_file_to_azure(
