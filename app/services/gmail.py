@@ -4,15 +4,16 @@ This module provides a utility class, `GmailService`, for interacting with the G
 import base64
 import hashlib
 import os
+import threading
 
 
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
-import logging
 
 from datetime import datetime, timezone, timedelta
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from ics import Calendar
 from langchain_community.document_loaders import (
     CSVLoader,
@@ -26,7 +27,6 @@ from models.db import vstore, astra_collection, MongodbClient
 from controllers.utils import upsert, check_relevance
 
 collection = MongodbClient["service"]["gmail"]
-logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
@@ -63,6 +63,8 @@ class GmailService():
             The email address used to create credentials for accessing the Gmail API.
         """
         self.service = build("gmail", "v1", credentials=credentials)
+        self.email = email
+        self.task = task
         if email and task:
             self.task = task
             self.email = email
@@ -244,15 +246,27 @@ class GmailService():
         """
         emails = []
         for message in messages:
-            msg = self.service.users().messages().get(  # pylint: disable=no-member
-                    userId='me', id=message['id'], format='full').execute()
-            headers = msg['payload']['headers']
-            utc_dt = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
-            hkt_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
-            email = self._create_email_base_structure(msg, hkt_dt)
-            self._extract_headers(email, headers)
-            self._extract_email_content(email, msg)
-            emails.append(email)
+            logger.info("Processing message: %s", message['id'])
+            try:
+                msg = self.service.users().messages().get(  # pylint: disable=no-member
+                        userId='me', id=message['id'], format='full').execute()
+                headers = msg['payload']['headers']
+                utc_dt = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
+                hkt_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
+                email = self._create_email_base_structure(msg, hkt_dt)
+                self._extract_headers(email, headers)
+                self._extract_email_content(email, msg)
+                emails.append(email)
+            except HttpError:
+                logger.error("Requested entity was not found with ID: %s", message['id'])
+                astra_collection.delete_many({
+                    "$and": [
+                        {"metadata.userId": self.email},
+                        {"metadata.type": "gmail"},
+                        {"metadata.msgId": message['id']}
+                    ]
+                })
+                logger.info(f"Deleted {result.deleted_count} documents for message ID: {message['id']}")
         return emails
 
     def _get_metadata(self, msg: dict) -> dict:

@@ -2,7 +2,7 @@
 import threading
 import uuid
 from venv import logger
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
@@ -235,27 +235,37 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
 
     _filter = {
         "metadata.userId": email,
-        "metadata.type": "gmail"
+        "metadata.type": "gmail",
+        "metadata.date": { "$gte": datetime.fromtimestamp(
+                int((datetime.now() - timedelta(days=30)).timestamp()), tz=timezone.utc) }
     }
+
     try:
         results = list(astra_collection.find(
             filter=_filter,
             projection={"metadata.msgId": 1},
-            sort={"metadata.date": SortMode.DESCENDING},
+            sort={"metadata.date": SortMode.ASCENDING},
             skip=body.skip or 0,
             limit=body.limit or 10,
-            timeout_ms=20000
+            timeout_ms=200000
         ))
         messages = [
             {"id": d["metadata"]["msgId"]}
             for d in results
         ]
+        # seen = set()
+        # messages = []
+        # for d in results:
+        #     if d["metadata"]["msgId"] in seen and len(seen) > body.limit:
+        #         continue
+        #     seen.add(d["metadata"]["msgId"])
+        #     messages.append({"id": d["metadata"]["msgId"]})
         service = GmailService(credentials, email)
         result = {
             "docs": service.preview(messages=messages) if len(messages) > 0 else [],
             "skip": body.skip + len(messages),
             "total": astra_collection.count_documents(
-                filter=_filter, upper_bound=500, timeout_ms=20000)
+                filter=_filter, upper_bound=10000, timeout_ms=200000)
         }
         return JSONResponse(content=result, status_code=200)
     except DataAPITimeoutException as e:
@@ -356,7 +366,6 @@ def post_query(body: EmailFilter, email: str = Query(...),
 
     return _handle_query_creation(credentials, email, query, query_hash)
 
-
 def _handle_query_update(credentials, email: str, query_id: str,
     query_params: dict, query_hash: str) -> JSONResponse:
     """Handle updating an existing query."""
@@ -402,7 +411,6 @@ def _handle_query_update(credentials, email: str, query_id: str,
         )
 
     return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
-
 
 def _handle_query_creation(credentials, email: str,
         query_params: dict, query_hash: str) -> JSONResponse:
