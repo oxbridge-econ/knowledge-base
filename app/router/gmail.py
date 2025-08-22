@@ -253,12 +253,19 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
             {"id": d["metadata"]["msgId"]}
             for d in results
         ]
+        # seen = set()
+        # messages = []
+        # for d in results:
+        #     if d["metadata"]["msgId"] in seen and len(seen) > body.limit:
+        #         continue
+        #     seen.add(d["metadata"]["msgId"])
+        #     messages.append({"id": d["metadata"]["msgId"]})
         service = GmailService(credentials, email)
         result = {
             "docs": service.preview(messages=messages) if len(messages) > 0 else [],
             "skip": body.skip + len(messages),
             "total": astra_collection.count_documents(
-                filter=_filter, upper_bound=500, timeout_ms=200000)
+                filter=_filter, upper_bound=10000, timeout_ms=200000)
         }
         return JSONResponse(content=result, status_code=200)
     except DataAPITimeoutException as e:
