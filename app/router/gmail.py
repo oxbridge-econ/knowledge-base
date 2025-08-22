@@ -255,7 +255,7 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
             "docs": service.preview(messages=messages) if len(messages) > 0 else [],
             "skip": body.skip + len(messages),
             "total": astra_collection.count_documents(
-                filter=_filter, upper_bound=1000, timeout_ms=20000)
+                filter=_filter, upper_bound=500, timeout_ms=20000)
         }
         return JSONResponse(content=result, status_code=200)
     except DataAPITimeoutException as e:
@@ -263,7 +263,7 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
         response = {
             "error": "The read operation timed out"
         }
-        return JSONResponse(content=result, status_code=200)
+        return JSONResponse(content=response, status_code=200)
 
 @router.delete("/query")
 def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONResponse:
