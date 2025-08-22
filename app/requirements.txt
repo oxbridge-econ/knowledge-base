@@ -1,4 +1,4 @@
-accelerate==1.7.0
+accelerate==1.10.0
 aiofiles==24.1.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.12.14
@@ -142,7 +142,7 @@ timm==1.0.15
 tokenizers==0.21.1
 toml==0.10.2
 torch==2.8.0
-torchvision==0.22.0
+torchvision==0.23.0
 tqdm==4.67.1
 transformers==4.53.0
 types-python-dateutil==2.9.0.20250516
