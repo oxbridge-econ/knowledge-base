@@ -191,7 +191,7 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     ]
     result = list(collection.aggregate(pipeline))
     if not result or "queries" not in result[0]:
-        return JSONResponse(content={"queries": []}, status_code=200)
+        return JSONResponse(content=[], status_code=200)
 
     processed_queries = []
     for query in result[0]["queries"]:
