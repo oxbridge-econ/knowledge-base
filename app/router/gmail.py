@@ -234,7 +234,7 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
                                      "error": "Invalid or expired credentials."}, status_code=401)
 
     _filter = {
-        "metadata.userId": "gli@oxbridge-econ.com",
+        "metadata.userId": email,
         "metadata.type": "gmail",
         "metadata.date": { "$gte": datetime.fromtimestamp(
                 int((datetime.now() - timedelta(days=30)).timestamp()), tz=timezone.utc) }
