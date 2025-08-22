@@ -1,10 +1,12 @@
 """Module for defining the main routes of the API."""
 import threading
 import uuid
+from venv import logger
 from datetime import datetime
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
+from astrapy.exceptions.data_api_exceptions import DataAPITimeoutException
 from services import GmailService, get_user_credentials
 from schema import EmailFilter, DocsReq, task_states
 from models.db import MongodbClient, astra_collection
@@ -226,32 +228,42 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
         JSONResponse: A JSON response containing the user's documents.
     """
     credentials = get_user_credentials(email=email)
+
+    if not credentials.valid or credentials.expired:
+        return JSONResponse(content={"valid": False,
+                                     "error": "Invalid or expired credentials."}, status_code=401)
+
     _filter = {
         "metadata.userId": email,
         "metadata.type": "gmail"
     }
-    results = list(astra_collection.find(
-        filter=_filter,
-        projection={"metadata.msgId": 1},
-        sort={"metadata.date": SortMode.DESCENDING},
-        skip=body.skip or 0,
-        limit=body.limit or 10
-    ))
-    messages = [
-        {"id": d["metadata"]["msgId"]}
-        for d in results
-    ]
-    if not credentials.valid or credentials.expired:
-        return JSONResponse(content={"valid": False,
-                                     "error": "Invalid or expired credentials."}, status_code=401)
-    service = GmailService(credentials, email)
-    result = {
-        "docs": service.preview(messages=messages) if len(messages) > 0 else [],
-        "skip": body.skip + len(messages),
-        "total": astra_collection.count_documents(
-            filter=_filter, upper_bound=1000)
-    }
-    return JSONResponse(content=result, status_code=200)
+    try:
+        results = list(astra_collection.find(
+            filter=_filter,
+            projection={"metadata.msgId": 1},
+            sort={"metadata.date": SortMode.DESCENDING},
+            skip=body.skip or 0,
+            limit=body.limit or 10,
+            timeout_ms=20000
+        ))
+        messages = [
+            {"id": d["metadata"]["msgId"]}
+            for d in results
+        ]
+        service = GmailService(credentials, email)
+        result = {
+            "docs": service.preview(messages=messages) if len(messages) > 0 else [],
+            "skip": body.skip + len(messages),
+            "total": astra_collection.count_documents(
+                filter=_filter, upper_bound=1000, timeout_ms=20000)
+        }
+        return JSONResponse(content=result, status_code=200)
+    except DataAPITimeoutException as e:
+        logger.error(e)
+        response = {
+            "error": "The read operation timed out"
+        }
+        return JSONResponse(content=result, status_code=200)
 
 @router.delete("/query")
 def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONResponse:
