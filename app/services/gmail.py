@@ -259,14 +259,14 @@ class GmailService():
                 emails.append(email)
             except HttpError:
                 logger.error("Requested entity was not found with ID: %s", message['id'])
-                # threading.Thread(target=astra_collection.delete_many, args=[{
-                #         "$and": [
-                #             {"metadata.userId": self.email},
-                #             {"metadata.type": "gmail"},
-                #             {"metadata.msgId": message['id']}
-                #         ]
-                #     }]).start()
-                # logger.info(f"Deleted {result.deleted_count} documents for message ID: {message['id']}")
+                astra_collection.delete_many({
+                    "$and": [
+                        {"metadata.userId": self.email},
+                        {"metadata.type": "gmail"},
+                        {"metadata.msgId": message['id']}
+                    ]
+                })
+                logger.info(f"Deleted {result.deleted_count} documents for message ID: {message['id']}")
         return emails
 
     def _get_metadata(self, msg: dict) -> dict:
