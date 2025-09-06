@@ -1,11 +1,9 @@
 """Module containing the data models for the application."""
 import uuid
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict
+from datetime import datetime
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
-
-task_states: Dict[str, str] = {}
 
 class EmailFilter(BaseModel):
     """
@@ -112,46 +110,6 @@ class MailReqData(BaseModel):
     email: str
     query: Optional[EmailQuery] = None
 
-class ReqFollowUp(BaseModel):
-    """
-    RequestFollowUp is a Pydantic model that represents a request for follow-up.
-
-    Attributes:
-        query (str): The query string that needs follow-up.
-        contexts (list[str]): A list of context strings related to the query.
-    """
-    query: str
-    contexts: list[str]
-
-class FollowUpQ(BaseModel):
-    """
-    FollowUpQ model to represent a follow-up question based on context information.
-
-    Attributes:
-        question (list[str]): A list of follow-up questions based on context information.
-    """
-    questions: list[str] = Field(..., description="3 Follow up questions based on context.")
-
-class ChatHistory(BaseModel):
-    """
-    ChatHistory model representing a chat session.
-
-    Attributes:
-        chat_id (str): The unique identifier for the chat session.
-        user_id (str): The unique identifier for the user.
-    """
-    chat_id: str
-    user_id: str
-
-class ChatSession(BaseModel):
-    """
-    ChatSession model representing a chat session.
-
-    Attributes:
-        user_id (str): The unique identifier for the user.
-    """
-    user_id: str
-
 class DocsReq(BaseModel):
     """
     Request schema for document retrieval operations.
@@ -164,3 +122,15 @@ class DocsReq(BaseModel):
     """
     limit: Optional[int] = 10
     skip: Optional[int] = 0
+
+class DriveFilter(BaseModel):
+    """
+    DriveQuery represents a query for Google Drive files with optional filtering.
+
+    Attributes:
+        url (str): The URL of the Google Drive folder to search within.
+    """
+    url: str = Field(
+        ...,
+        pattern=r"^https://drive\.google\.com/drive/(u/\d+/)?folders/[A-Za-z0-9_-]+$"
+    )

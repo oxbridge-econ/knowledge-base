@@ -23,7 +23,6 @@ from azure.core.exceptions import AzureError
 from models.llm import client
 from models.db import vstore, astra_collection
 from controllers.utils import upsert
-from schema import task_states
 
 
 text_splitter = RecursiveCharacterTextSplitter()
@@ -128,7 +127,7 @@ def extract_text_from_image(image):
     )
     return json.loads(response.choices[0].message.content)["content"]
 
-def load_pdf(content: bytes, filename: str, email: str, task: dict):
+def load_pdf(content: bytes, filename: str, user_id: str, task: dict):
     """
     Loads and processes PDF files from a specified directory.
 
@@ -140,7 +139,7 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
     Args:
         content (bytes): The binary content of the image file.
         filename (str): The name to use when saving the file temporarily.
-        email (str): The email address of the user, used for metadata.
+        user_id (str): The id of the user, used for metadata.
         task_id (str): The unique identifier for the task.
 
     Returns:
@@ -163,8 +162,7 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
     try:
         task["status"] = "in progress"
         task["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-        upsert(email, task)
-        task_states[task["id"]] = "In Progress"
+        upsert(user_id, task, "file")
         pdf = PdfReader(path)
         for page_num, page in enumerate(pdf.pages):
             contain = check_image(page)
@@ -179,24 +177,22 @@ def load_pdf(content: bytes, filename: str, email: str, task: dict):
                 metadata={"source": filename, "page": page_num + 1})
             documents.append(doc)
         os.remove(path)
-        threading.Thread(target=upload, args=[documents, email, task]).start()
+        threading.Thread(target=upload, args=[documents, user_id, task]).start()
     except (FileNotFoundError, ValueError, OSError, Exception) as e: # pylint: disable=broad-except
         if os.path.exists(path):
             os.remove(path)
         task["status"] = "failed"
         task["error"] = str(e)
-        upsert(email, task)
-        task_states[task["id"]] = "Failed"
+        upsert(user_id, task, "file")
 
-
-def load_img(content: bytes, filename: str, email: str, task: dict):
+def load_img(content: bytes, filename: str, user_id: str, task: dict):
     """
     Loads an image file from bytes content, extracts its contents and upload.
 
     Args:
         content (bytes): The binary content of the image file.
         filename (str): The name to use when saving the file temporarily.
-        email (str): The email address of the user, used for metadata.
+        user_id (str): The id of the user, used for metadata.
         task_id (str): The unique identifier for the task.
 
     Returns:
@@ -208,28 +204,25 @@ def load_img(content: bytes, filename: str, email: str, task: dict):
     """
     try:
         task["status"] = "in progress"
-        upsert(email, task)
-        task_states[task["id"]] = "In Progress"
+        upsert(user_id, task, "file")
         documents = []
         text = extract_text_from_image(Image.open(BytesIO(content)))
         doc = Document(page_content=text, metadata={"source": filename})
         documents.append(doc)
-        threading.Thread(target=upload, args=[documents, email, task]).start()
+        threading.Thread(target=upload, args=[documents, user_id, task]).start()
     except (FileNotFoundError, ValueError, OSError) as e:
         logger.error("Error processing image %s: . Error: %s", filename, e)
         task["status"] = "failed"
-        upsert(email, task)
-        task_states[task["id"]] = "Failed"
+        upsert(user_id, task, "file")
 
-
-def load_docx(content: bytes, filename: str, email: str, task: dict):
+def load_docx(content: bytes, filename: str, user_id: str, task: dict):
     """
     Loads a DOCX file from bytes content, extracts its contents and upload.
 
     Args:
         content (bytes): The binary content of the DOCX file.
         filename (str): The name to use when saving the file temporarily.
-        email (str): The email address of the user, used for metadata.
+        user_id (str): The id of the user, used for metadata.
         task_id (str): The unique identifier for the task.
 
     Returns:
@@ -242,29 +235,26 @@ def load_docx(content: bytes, filename: str, email: str, task: dict):
     path = os.path.join("/tmp", filename)
     try:
         task["status"] = "in progress"
-        upsert(email, task)
-        task_states[task["id"]] = "In Progress"
+        upsert(user_id, task, "file")
         with open(path, "wb") as f:
             f.write(content)
         documents = Docx2txtLoader(file_path=path).load()
         os.remove(path)
-        threading.Thread(target=upload, args=[documents, email, task]).start()
+        threading.Thread(target=upload, args=[documents, user_id, task]).start()
     except (FileNotFoundError, ValueError, OSError):
         if os.path.exists(path):
             os.remove(path)
         task["status"] = "failed"
-        upsert(email, task)
-        task_states[task["id"]] = "Failed"
+        upsert(user_id, task, "file")
 
-
-def upload(docs: list[Document], email: str, task: dict):
+def upload(docs: list[Document], user_id: str, task: dict):
     """
     Processes a list of documents, splits them into smaller chunks, updates their metadata,
     generates unique IDs for each chunk, and adds them to a vector store.
 
     Args:
         docs (list): A list of document objects to be processed.
-        email (str): The email address of the user, used for metadata.
+        user_id (str): The user_id address of the user, used for metadata.
         task (dict): The task dictionary containing task information.
 
     Metadata Processing:
@@ -290,17 +280,16 @@ def upload(docs: list[Document], email: str, task: dict):
                 if "page_label" in document.metadata:
                     document.metadata["page"] = int(document.metadata["page_label"])
                 attachment = document.metadata["source"].replace("{FOLDER}/", "")
-                document.metadata["title"] = attachment.split(".")[0]
-                document.metadata["ext"] = attachment.split(".")[-1]
+                document.metadata["filename"] = attachment
                 document.metadata = {
                     key: value
                     for key, value in document.metadata.items()
-                    if key in ["page", "title", "ext"]
+                    if key in ["page", "filename"]
                 }
                 document.metadata["id"] = str(
-                    hashlib.sha256((email + attachment).encode()).hexdigest())
-                document.metadata["userId"] = email
-                document.metadata["type"] = "file"
+                    hashlib.sha256((user_id + attachment).encode()).hexdigest())
+                document.metadata["userId"] = user_id
+                document.metadata["service"] = "file"
                 if "page" in document.metadata:
                     ids.append(f"{document.metadata['id']}-{document.metadata['page']}-{index}")
                 else:
@@ -308,22 +297,19 @@ def upload(docs: list[Document], email: str, task: dict):
                 documents.append(document)
         vstore.add_documents_with_retry(documents, ids, task)
         task["status"] = "completed"
-        upsert(email, task)
-        task_states[task["id"]] = "Completed"
+        upsert(user_id, task, "file")
     except (ConnectionError, TimeoutError, KeyError, ValueError, TypeError, AttributeError) as e:
         logger.error("Error processing documents: %s", e)
         task["status"] = "failed"
-        upsert(email, task)
-        task_states[task["id"]] = "Failed"
-
+        upsert(user_id, task, "file")
 
 def upload_file_to_azure(
         file_content: bytes, filename: str,
-        email: str, content_type: str = None
+        user_id: str, content_type: str = None
     ) -> Dict[str, Any]:
     """
     Upload a file to Azure Blob Storage.
-    
+
     Args:
         file_content: The file content as bytes
         blob_path: The path in the container where the file will be stored
@@ -333,7 +319,7 @@ def upload_file_to_azure(
         Dict containing upload result status and details
     """
 
-    blob_path = f"{email}/{filename}"
+    blob_path = f"{user_id}/{filename}"
 
     try:
         # Initialize the BlobServiceClient
@@ -371,13 +357,12 @@ def upload_file_to_azure(
         logger.error("Unexpected error uploading file to %s: %s", blob_path, e)
         raise e
 
-
-def get_files(email: str) -> List[Dict[str, Any]]:
+def get_files(user_id: str) -> List[Dict[str, Any]]:
     """
     Retrieves the list of files uploaded by the user from Azure Blob Storage.
 
     Args:
-        email (str): The email of the user.
+        user_id (str): The id of the user.
 
     Returns:
         List[Dict[str, Any]]: A list of dictionaries containing file metadata.
@@ -386,12 +371,12 @@ def get_files(email: str) -> List[Dict[str, Any]]:
     try:
         blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
         container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
-        blobs = container_client.list_blobs(name_starts_with=f"{email}/")
+        blobs = container_client.list_blobs(name_starts_with=f"{user_id}/")
 
         files = []
         for blob in blobs:
             # Generate a unique ID for the file
-            file_id = hashlib.sha256((email + blob.name).encode()).hexdigest()
+            file_id = hashlib.sha256((user_id + blob.name).encode()).hexdigest()
 
             # Generate download URL (SAS URL)
             download_url = generate_download_url(blob.name, expiry_hours=8760)
@@ -404,7 +389,7 @@ def get_files(email: str) -> List[Dict[str, Any]]:
             })
         return files
     except AzureError as e:
-        logger.error("Error retrieving files for %s: %s", email, e)
+        logger.error("Error retrieving files for %s: %s", user_id, e)
         return []
 
 def generate_download_url(blob_path: str, expiry_hours: int = 1) -> str:
@@ -443,12 +428,12 @@ def generate_download_url(blob_path: str, expiry_hours: int = 1) -> str:
         logger.error("Error generating download URL for %s: %s", blob_path, e)
         raise e
 
-def delete_file(email: str, file_name: str) -> Dict[str, Any]:
+def delete_file(user_id: str, file_name: str) -> Dict[str, Any]:
     """
     Deletes a file from Azure Blob Storage 
     and removes associated documents from the vector database.
     Args:
-        email (str): The email of the user.
+        user_id (str): The id of the user.
         file_name (str): The name of the file to delete.
 
     Returns:
@@ -457,7 +442,7 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
     try:
         blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
         container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
-        blob_path = f"{email}/{file_name}"
+        blob_path = f"{user_id}/{file_name}"
 
         blob_client = container_client.get_blob_client(blob_path)
         if not blob_client.exists():
@@ -467,7 +452,7 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
         blob_client.delete_blob()
 
         # Generate the same document ID used during upload
-        document_id = str(hashlib.sha256((email + file_name).encode()).hexdigest())
+        document_id = str(hashlib.sha256((user_id + file_name).encode()).hexdigest())
 
         # Extract title and extension from filename
         title = file_name.split(".")[0]
@@ -477,16 +462,16 @@ def delete_file(email: str, file_name: str) -> Dict[str, Any]:
         try:
             result = astra_collection.delete_many({
                 "$and": [
-                    {"metadata.userId": email},
+                    {"metadata.userId": user_id},
                     {"metadata.id": document_id},
-                    {"metadata.type": "file"},
+                    {"metadata.service": "file"},
                     {"metadata.title": title},
                     {"metadata.ext": ext}
                 ]
             })
 
             logger.info("Deleted %d document chunks from vector DB for file %s, user %s",
-                       result.deleted_count, file_name, email)
+                       result.deleted_count, file_name, user_id)
 
         except (ConnectionError, TimeoutError, ValueError) as vdb_error:
             logger.error("Error deleting from vector DB for file %s: %s", file_name, vdb_error)

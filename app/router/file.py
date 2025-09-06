@@ -11,18 +11,18 @@ from controllers.loader import (
     load_img,
     FileAlreadyExistsError,
     upload_file_to_azure, get_files, delete_file)
-from schema import task_states
 
 router = APIRouter(prefix="/file", tags=["file"])
 
 
 @router.post("")
-async def load(files: List[UploadFile] = File(...), email: str = Query(...)) -> JSONResponse:
+async def load(files: List[UploadFile] = File(...), user_id: str = Query(None)) -> JSONResponse:
     """
     Handles the chat POST request.
 
     Args:
-        query (ReqData): The request data containing the query parameters.
+        files (List[UploadFile]): A list of uploaded files.
+        user_id (str): The id of the user.
 
     Returns:
         str: The generated response from the chat function.
@@ -40,75 +40,69 @@ async def load(files: List[UploadFile] = File(...), email: str = Query(...)) -> 
             "service": "file",
             "type": "manual"
         }
-        task_states[task["id"]] = "Pending"
-        upsert(email, task)
+        upsert(user_id, task, "file")
         try:
-
             if file.content_type == "application/pdf":
                 threading.Thread(
-                target=load_pdf, args=(content, file.filename,
-                email, task)
+                target=load_pdf, args=(content, file.filename, user_id, task)
                 ).start()
             elif file.content_type == \
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                 threading.Thread(
-                    target=load_docx, args=(content, file.filename, email, task)
+                    target=load_docx, args=(content, file.filename, user_id, task)
                     ).start()
             elif file.content_type in ["image/png", "image/jpeg"]:
                 threading.Thread(
-                    target=load_img, args=(content, file.filename, email, task)
+                    target=load_img, args=(content, file.filename, user_id, task)
                 ).start()
             else:
                 task["status"] = "failed"
                 task["error"] = f"Unsupported file type: {file.content_type}"
-                task_states[task["id"]] = "Failed"
-                upsert(email, task)
+                upsert(user_id, task, "file")
                 tasks.append(task)
                 continue
-            upload_file_to_azure(content, file.filename, email)
+            upload_file_to_azure(content, file.filename, user_id)
 
         except (FileAlreadyExistsError, Exception)as e: # pylint: disable=broad-except
             task["status"] = "failed"
             task["error"] = str(e)
-            task_states[task["id"]] = "Failed"
-            upsert(email, task)
+            upsert(user_id, task, "file")
 
         tasks.append(task)
 
     return JSONResponse(content=tasks)
 
 @router.get("")
-async def get_azure_files(email: str = Query(...)) -> JSONResponse:
+async def get_azure_files(user_id: str = Query(None)) -> JSONResponse:
     """
     Retrieves the list of files uploaded by the user.
 
     Args:
-        email (str): The email of the user.
+        user_id (str): The id of the user.
 
     Returns:
         JSONResponse: A response containing the list of files.
     """
     try:
-        files = get_files(email)
+        files = get_files(user_id)
         return JSONResponse(content=files)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 @router.delete("")
-async def delete(email: str = Query(...), file_name: str = Query(...),) -> JSONResponse:
+async def delete(user_id: str = Query(None), file_name: str = Query(...),) -> JSONResponse:
     """
     Deletes a file from Azure storage and vector database.
 
     Args:
-        email (str): The email of the user.
+        user_id (str): The id of the user.
         file_name (str): The name of the file to be deleted.
 
     Returns:
         JSONResponse: A response indicating the success or failure of the deletion.
     """
     try:
-        result = delete_file(email, file_name)
-
+        result = delete_file(user_id, file_name)
         if result["success"]:
             return JSONResponse(
                 status_code=200,
