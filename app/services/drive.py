@@ -167,7 +167,7 @@ class DriveService():
             self._init_task(query)
             file_processed = 0
             files = self.service.files().list(  # pylint: disable=no-member
-                    q=f"'{query["id"]}' in parents and trashed=false"
+                    q=f"'{query['id']}' in parents and trashed=false"
             ).execute()
             for item in files.get('files', []):
                 documents = []

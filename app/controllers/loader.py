@@ -29,13 +29,6 @@ text_splitter = RecursiveCharacterTextSplitter()
 AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
 AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
 
-ALLOWED_FILE_TYPES = {
-    "application/pdf": ".pdf",
-    "text/plain": ".txt",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    "image/png": ".png",
-    "image/jpeg": ".jpg"
-}
 
 class FileAlreadyExistsError(Exception):
     """Custom exception raised when a file already exists in Azure Blob Storage."""
@@ -303,132 +296,7 @@ def upload(docs: list[Document], user_id: str, task: dict):
         task["status"] = "failed"
         upsert(user_id, task, "file")
 
-def upload_file_to_azure(
-        file_content: bytes, filename: str,
-        user_id: str, content_type: str = None
-    ) -> Dict[str, Any]:
-    """
-    Upload a file to Azure Blob Storage.
-
-    Args:
-        file_content: The file content as bytes
-        blob_path: The path in the container where the file will be stored
-        content_type: The MIME type of the file
-        
-    Returns:
-        Dict containing upload result status and details
-    """
-
-    blob_path = f"{user_id}/{filename}"
-
-    try:
-        # Initialize the BlobServiceClient
-        blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
-
-        # Get a reference to the container
-        container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
-
-        # Create a blob client for the specific path
-        blob_client = container_client.get_blob_client(blob_path)
-
-        if blob_client.exists():
-            logger.warning("File already exists at %s", blob_path)
-            raise FileAlreadyExistsError(filename)
-
-        # Set content type if provided
-        content_settings = None
-        if content_type:
-            content_settings = ContentSettings(content_type=content_type)
-        # Upload the file
-        blob_client.upload_blob(
-            file_content,
-            overwrite=True,
-            content_settings=content_settings
-        )
-
-        logger.info("File uploaded successfully to %s", blob_path)
-    except FileAlreadyExistsError as e:
-        logger.error("File already exists at %s: %s" , blob_path, e)
-        raise e
-    except AzureError as e:
-        logger.error("Azure error uploading file to %s: %s", blob_path, e)
-        raise e
-    except Exception as e:
-        logger.error("Unexpected error uploading file to %s: %s", blob_path, e)
-        raise e
-
-def get_files(user_id: str) -> List[Dict[str, Any]]:
-    """
-    Retrieves the list of files uploaded by the user from Azure Blob Storage.
-
-    Args:
-        user_id (str): The id of the user.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries containing file metadata.
-    """
-
-    try:
-        blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
-        container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
-        blobs = container_client.list_blobs(name_starts_with=f"{user_id}/")
-
-        files = []
-        for blob in blobs:
-            # Generate a unique ID for the file
-            file_id = hashlib.sha256((user_id + blob.name).encode()).hexdigest()
-
-            # Generate download URL (SAS URL)
-            download_url = generate_download_url(blob.name, expiry_hours=8760)
-
-            files.append({
-                "id": file_id,
-                "filename": blob.name.split("/")[-1],
-                "createdAt": blob.last_modified.isoformat(),
-                "downloadUrl": download_url,
-            })
-        return files
-    except AzureError as e:
-        logger.error("Error retrieving files for %s: %s", user_id, e)
-        return []
-
-def generate_download_url(blob_path: str, expiry_hours: int = 1) -> str:
-    """
-    Generate a download URL (SAS URL) for a blob in Azure Storage.
-    
-    Args:
-        blob_path: The path to the blob in the container
-        expiry_hours: Number of hours the URL should be valid (default: 1)
-        
-    Returns:
-        str: The download URL with SAS token
-    """
-    try:
-        blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
-
-        # Generate SAS token
-        sas_token = generate_blob_sas(
-            account_name=blob_service_client.account_name,
-            container_name=AZURE_CONTAINER_NAME,
-            blob_name=blob_path,
-            account_key=blob_service_client.credential.account_key,
-            permission=BlobSasPermissions(read=True),
-            expiry=datetime.now() + timedelta(hours=expiry_hours)
-        )
-
-        # Construct the full URL
-        blob_url = (
-            f"https://{blob_service_client.account_name}."
-            f"blob.core.windows.net/{AZURE_CONTAINER_NAME}/"
-            f"{blob_path}?{sas_token}"
-        )
-        return blob_url
-
-    except Exception as e:
-        logger.error("Error generating download URL for %s: %s", blob_path, e)
-        raise e
-
-def delete_file(user_id: str, file_name: str) -> Dict[str, Any]:
+def delete_file(user_id: str, file_name: str):
     """
     Deletes a file from Azure Blob Storage 
     and removes associated documents from the vector database.

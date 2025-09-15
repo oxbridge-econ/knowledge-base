@@ -11,15 +11,16 @@ from datetime import datetime, timezone, timedelta
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from ics import Calendar
-from langchain_community.document_loaders import (
-    CSVLoader,
-    PyPDFLoader,
-    UnstructuredExcelLoader,
-    UnstructuredImageLoader,
-)
+# from langchain_community.document_loaders import (
+#     CSVLoader,
+#     PyPDFLoader,
+#     UnstructuredExcelLoader,
+#     UnstructuredImageLoader,
+# )
+from controllers.file import FileHandler
+from controllers.utils import upsert, check_relevance
 from langchain_core.documents import Document
 from models.db import vstore, astra_collection, MongodbClient
-from controllers.utils import upsert, check_relevance
 
 collection = MongodbClient["gmail"]["user"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -337,29 +338,7 @@ class GmailService():
                     path = os.path.join(".", ATTACHMENTS_DIR, f"{msg['id']}_{part['filename']}")
                     with open(path, "wb") as f:
                         f.write(file_data)
-                    if part["mimeType"] == "application/pdf":
-                        attach_docs = PyPDFLoader(path).load()
-                    elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
-                        try:
-                            attach_docs = UnstructuredImageLoader(path).load()
-                        except (ValueError, TypeError, ImportError) as e:
-                            logger.error("Error loading image: %s", e)
-                    elif part["filename"].endswith(".csv"):
-                        attach_docs = CSVLoader(path).load()
-                    elif (
-                        part["mimeType"]
-                        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    ):
-                        try:
-                            attach_docs = UnstructuredExcelLoader(path).load()
-                        except ImportError as e:
-                            logger.warning("Skip Excel file - missing openpyxl dependency %s", e)
-                            logger.warning("Fix: pip install openpyxl")
-                            attach_docs = []
-                        except (ValueError, TypeError, OSError) as e:
-                            logger.error("Error processing Excel file: %s", e)
-                            attach_docs = []
-                    elif part["mimeType"] == "application/ics":
+                    if part["mimeType"] == "application/ics":
                         with open(path, "r", encoding="utf-8") as f:
                             calendar = Calendar(f.read())
                         for event in calendar.events:
@@ -384,6 +363,14 @@ class GmailService():
                                     }
                                 )
                             )
+                    else:
+                        try:
+                            attach_docs = []
+                            for document in FileHandler(path=path).process():
+                                attach_docs.append(document)
+                        except Exception as e:
+                            logger.error("Error processing attachment %s: %s", part["filename"], e)
+                            attach_docs = []
                     if os.path.exists(path):
                         os.remove(path)
                     for index, document in enumerate(attach_docs or []):
