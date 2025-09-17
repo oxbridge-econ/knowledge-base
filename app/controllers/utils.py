@@ -7,6 +7,7 @@ from langchain_core.documents import Document
 from openai import RateLimitError
 
 from models.db import MongodbClient
+from models.llm import GPTModel
 from controllers.topic import detector
 
 def check_relevance(documents: Document, topics: list[str]) -> list[Document]:
@@ -170,7 +171,7 @@ def extract_essential_query_fields(query_data: dict) -> dict:
         "id", "subject", "from_email", "to_email", "cc_email", 
         "has_words", "not_has_words", "before", "after", "topics", "has_attachment",
         "createdTime", "count",
-        "status", "service", "type"
+        "status", "service", "type", "title"
     ]
 
     return {
@@ -233,6 +234,78 @@ def check_duplicate_query(collection, email: str,
         return result[0]["query"]
     return None
 
+def generate_query_title(filters: dict) -> str: # pylint: disable=too-many-branches
+    """
+    Generate a descriptive title for a Gmail query based on its filters using AI.
+    
+    Args:
+        filters (dict): Query filter parameters
+        
+    Returns:
+        str: Generated title for the query
+    """
+    try:
+        # Build filter description
+        filter_parts = []
+        if filters.get("subject"):
+            filter_parts.append(f"Subject: {filters['subject']}")
+        if filters.get("from_email"):
+            filter_parts.append(f"From: {filters['from_email']}")
+        if filters.get("to_email"):
+            filter_parts.append(f"To: {filters['to_email']}")
+        if filters.get("cc_email"):
+            filter_parts.append(f"CC: {filters['cc_email']}")
+        if filters.get("has_words"):
+            filter_parts.append(f"Keywords: {filters['has_words']}")
+        if filters.get("not_has_words"):
+            filter_parts.append(f"Exclude: {filters['not_has_words']}")
+        if filters.get("before"):
+            filter_parts.append(f"Before: {filters['before']}")
+        if filters.get("after"):
+            filter_parts.append(f"After: {filters['after']}")
+        if filters.get("has_attachment"):
+            filter_parts.append("With attachments")
+        if filters.get("topics") and isinstance(filters["topics"], list) and filters["topics"]:
+            filter_parts.append(f"Topics: {', '.join(filters['topics'])}")
+
+        if not filter_parts:
+            return "All Emails"
+
+        filter_description = " | ".join(filter_parts)
+
+        # Generate title using GPT
+        # pylint: disable=line-too-long
+        prompt = f"""Generate a concise, descriptive title (max 60 characters) for a Gmail query with these filters:
+{filter_description}
+
+The title should be clear and informative, describing what emails this query would find. Examples:
+- "GitHub notifications from oxbridge-econ/finbot"
+- "SmartCareers emails to gli@oxbridge-econ.com after May 2025"
+- "FinFAST emails about Finance, Economy, AI topics"
+
+Title:"""
+
+        model = GPTModel()
+        response = model.invoke(prompt)
+        title = response.content.strip().strip('"').strip("'")
+
+        # Ensure title is not too long
+        if len(title) > 60:
+            title = title[:57] + "..."
+
+        return title
+
+    except Exception as e: # pylint: disable=broad-except
+        logger.warning("Failed to generate AI title: %s", str(e))
+        # Fallback to simple concatenation
+        if filters.get("subject"):
+            return f"Subject: {filters['subject'][:40]}..."
+        if filters.get("from_email"):
+            return f"From: {filters['from_email'][:40]}..."
+        if filters.get("to_email"):
+            return f"To: {filters['to_email'][:40]}..."
+        return "Gmail Query"
+
 def prepare_query_for_storage(query_params: dict, task_id: str, query_hash: str) -> dict:
     """
     Prepare query parameters for storage in the database.
@@ -258,5 +331,8 @@ def prepare_query_for_storage(query_params: dict, task_id: str, query_hash: str)
             "count": 0
         }
     })
+
+    # Generate AI title based on filters
+    storage_query["title"] = generate_query_title(storage_query)
 
     return storage_query
