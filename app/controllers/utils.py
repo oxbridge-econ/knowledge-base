@@ -4,7 +4,7 @@ from venv import logger
 from datetime import datetime
 import hashlib
 from langchain_core.documents import Document
-from openai import RateLimitError
+from openai import RateLimitError, OpenAIError
 
 from models.db import MongodbClient
 from models.llm import GPTModel
@@ -295,7 +295,7 @@ Title:"""
 
         return title
 
-    except Exception as e: # pylint: disable=broad-except
+    except (OpenAIError, AttributeError, TypeError, KeyError) as e:
         logger.warning("Failed to generate AI title: %s", str(e))
         # Fallback to simple concatenation
         if filters.get("subject"):
