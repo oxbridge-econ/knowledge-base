@@ -4,8 +4,6 @@ This module provides a utility class, `GmailService`, for interacting with the G
 import base64
 import hashlib
 import os
-import threading
-
 
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
@@ -259,14 +257,15 @@ class GmailService():
                 emails.append(email)
             except HttpError:
                 logger.error("Requested entity was not found with ID: %s", message['id'])
-                astra_collection.delete_many({
+                result = astra_collection.delete_many({
                     "$and": [
                         {"metadata.userId": self.email},
                         {"metadata.type": "gmail"},
                         {"metadata.msgId": message['id']}
                     ]
                 })
-                logger.info(f"Deleted {result.deleted_count} documents for message ID: {message['id']}")
+                logger.info("Deleted %d documents for message ID: %s",
+                           result.deleted_count, message['id'])
         return emails
 
     def _get_metadata(self, msg: dict) -> dict:

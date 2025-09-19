@@ -212,6 +212,7 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
             "service": query["task"]["service"] if "task" in query else query.get("service", ""),
             "type": query["task"]["type"] if "task" in query else query.get("type", ""),
             "createdTime": query.get("createdTime", ""),
+            "title": query.get("title", ""),
         }
         processed_queries.append(processed_query)
     return JSONResponse(content=processed_queries, status_code=200)
