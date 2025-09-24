@@ -11,19 +11,19 @@ from venv import logger
 from datetime import datetime, timezone, timedelta
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from ics import Calendar
+# from ics import Calendar
 # from langchain_community.document_loaders import (
 #     CSVLoader,
 #     PyPDFLoader,
 #     UnstructuredExcelLoader,
 #     UnstructuredImageLoader,
 # )
-from controllers.file import FileHandler
+from controllers.file import FileHandler, CalendarLoader
 from controllers.utils import upsert, check_relevance
 from langchain_core.documents import Document
 from models.db import vstore, astra_collection, MongodbClient
 
-collection = MongodbClient["gmail"]["user"]
+collection = MongodbClient["service"]["gmail"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
 ATTACHMENTS_DIR = "cache"
@@ -340,30 +340,9 @@ class GmailService():
                     with open(path, "wb") as f:
                         f.write(file_data)
                     if part["mimeType"] == "application/ics":
-                        with open(path, "r", encoding="utf-8") as f:
-                            calendar = Calendar(f.read())
-                        for event in calendar.events:
-                            documents.append(
-                                Document(
-                                    page_content=(f"Event: {event.name}\n"
-                                    f"Description: {event.description}\n"
-                                    f"Start: {event.begin}\n"
-                                    f"End: {event.end}"),
-                                    metadata={
-                                        "attachment": part["filename"],
-                                        "mimeType": part["mimeType"],
-                                        "location": event.location,
-                                        "created": event.created.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "last_modified": event.last_modified.strftime(
-                                            "%d/%m/%Y %H:%M:%S"
-                                        ),
-                                        "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "id": (f"{msg_id}-{part['filename']}-"
-                                        f"{hashlib.sha256(file_data).hexdigest()}")
-                                    }
-                                )
-                            )
+                        calendar = CalendarLoader(file_path=path, part=part,
+                         msg_id=msg_id, file_data=file_data)
+                        attach_docs = calendar.load()
                     else:
                         try:
                             attach_docs = []

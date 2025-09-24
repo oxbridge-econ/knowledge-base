@@ -48,7 +48,7 @@ async def upload_files(files: List[UploadFile] = File(...),
             task["status"] = "failed"
             task["error"] = str(e)
             tasks.append(task)
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             logger.error("Error processing file %s: %s", file.filename, e)
             task = {
                 "id": str(uuid.uuid4()),
@@ -76,7 +76,7 @@ async def get_user_files(user_id: str = Query(None)) -> JSONResponse:
         service = FileService(user_id)
         files = service.get_files()
         return JSONResponse(content=files)
-    except Exception as e:
+    except Exception as e: # pylint: disable=broad-exception-caught
         logger.error("Error retrieving files for user %s: %s", user_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -102,6 +102,6 @@ async def delete_user_file(user_id: str = Query(None), file_name: str = Query(..
             status_code=404 if "not found" in result["error"].lower() else 500,
             content=result
         )
-    except Exception as e:
+    except Exception as e: # pylint: disable=broad-exception-caught
         logger.error("Error in delete endpoint: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,9 +1,11 @@
 """Module for loading documents from sources including local files, URLs, and SharePoint."""
 import os
 import base64
+import hashlib
 import json
 from venv import logger
 from io import BytesIO
+from ics import Calendar
 import requests
 from pydantic import BaseModel
 from pdf2image import convert_from_path
@@ -168,6 +170,56 @@ class ImageLoader:  # pylint: disable=too-few-public-methods
             logger.error("Error loading image: %s", str(e))
         return documents
 
+class CalendarLoader:  # pylint: disable=too-few-public-methods
+    """
+    CalendarLoader is a class that handles loading and processing of calendar files.
+    """
+    def __init__(self, file_path: str, part: dict, msg_id: str, file_data: bytes):
+        self.file_path = file_path
+        self.part = part or {}
+        self.msg_id = msg_id or ""
+        self.file_data = file_data or b""
+
+    def load(self):
+        """
+        Loads and processes calendar files from a specified path.
+        """
+        documents = []
+        try:
+            calendar = None
+            if self.file_data:
+                calendar = Calendar(self.file_data.decode("utf-8"))
+            else:
+                with open(self.file_path, "r", encoding="utf-8") as f:
+                    calendar = Calendar(f.read())
+
+            for event in calendar.events:
+                documents.append(
+                    Document(
+                        page_content=(f"Event: {event.name}\n"
+                        f"Description: {event.description}\n"
+                        f"Start: {event.begin}\n"
+                        f"End: {event.end}"),
+                        metadata={
+                            "attachment": self.part["filename"],
+                            "mimeType": self.part["mimeType"],
+                            "location": event.location,
+                            "created": event.created.strftime("%d/%m/%Y %H:%M:%S"),
+                            "last_modified": event.last_modified.strftime(
+                                "%d/%m/%Y %H:%M:%S"
+                            ),
+                            "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
+                            "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
+                            "id": (f"{self.msg_id}-{self.part['filename']}-"
+                            f"{hashlib.sha256(self.file_data).hexdigest()}")
+                        }
+                    )
+                )
+        except (FileNotFoundError, OSError, ValueError) as e:
+            logger.error("Error loading calendar: %s", str(e))
+        return documents
+
+
 LOADER_MAP = {
     '.csv': CSVLoader,
     '.xlsx': UnstructuredExcelLoader,
@@ -183,6 +235,7 @@ LOADER_MAP = {
     '.msg': OutlookMessageLoader,
     '.eml': UnstructuredEmailLoader,
     '.html': BSHTMLLoader,
+    '.ics': CalendarLoader,
 }
 
 class FileHandler:  # pylint: disable=too-few-public-methods

@@ -12,7 +12,7 @@ from azure.storage.blob import (
 from azure.core.exceptions import AzureError
 from controllers.file import FileHandler
 from controllers.loader import (
-    FileAlreadyExistsError,upload, 
+    FileAlreadyExistsError,upload,
     delete_file,
 )
 from controllers.utils import upsert

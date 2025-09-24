@@ -5,7 +5,6 @@ from datetime import datetime
 import hashlib
 from langchain_core.documents import Document
 
-from openai import RateLimitError
 from fastapi.responses import JSONResponse
 
 from openai import RateLimitError, OpenAIError
