@@ -4,6 +4,7 @@ This module provides a utility class, `GmailService`, for interacting with the G
 import base64
 import hashlib
 import os
+
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
 
@@ -265,7 +266,7 @@ class GmailService():
                     ]
                 })
                 logger.info("Deleted %d documents for message ID: %s",
-                            result.deleted_count, message['id'])
+                           result.deleted_count, message['id'])
         return emails
 
     def _get_metadata(self, msg: dict) -> dict:
