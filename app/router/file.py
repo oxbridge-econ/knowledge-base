@@ -1,8 +1,8 @@
 """Module for defining the main routes of the API."""
 import uuid
 from venv import logger
-from typing import List, Dict, Any
-from fastapi import APIRouter, File, UploadFile, HTTPException, Query
+from typing import List
+from fastapi import APIRouter, File, UploadFile, Query
 from fastapi.responses import JSONResponse
 from services.file import FileService, FileAlreadyExistsError
 
@@ -78,7 +78,7 @@ async def get_user_files(user_id: str = Query(None)) -> JSONResponse:
         return JSONResponse(content=files)
     except Exception as e: # pylint: disable=broad-exception-caught
         logger.error("Error retrieving files for user %s: %s", user_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content=str(e))
 
 @router.delete("")
 async def delete_user_file(user_id: str = Query(None), file_name: str = Query(...)) -> JSONResponse:
@@ -104,4 +104,4 @@ async def delete_user_file(user_id: str = Query(None), file_name: str = Query(..
         )
     except Exception as e: # pylint: disable=broad-exception-caught
         logger.error("Error in delete endpoint: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content=str(e))

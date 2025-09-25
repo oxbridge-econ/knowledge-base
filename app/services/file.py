@@ -82,7 +82,7 @@ class FileService:
 
             return self.task
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             logger.error("Error processing file %s: %s", filename, str(e))
             if self.task:
                 self.task["status"] = "failed"
@@ -113,7 +113,7 @@ class FileService:
             # Upload to vector store (use existing upload function)
             upload(documents, self.user_id, self.task)
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             logger.error("Error processing file %s: %s", filename, e)
             if self.task:
                 self.task["status"] = "failed"

@@ -23,7 +23,8 @@ from controllers.utils import upsert, check_relevance
 from langchain_core.documents import Document
 from models.db import vstore, astra_collection, MongodbClient
 
-collection = MongodbClient["service"]["gmail"]
+SERVICE = "gmail"
+collection = MongodbClient[SERVICE]["user"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
 ATTACHMENTS_DIR = "cache"
