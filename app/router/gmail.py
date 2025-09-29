@@ -8,17 +8,18 @@ from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
 from astrapy.exceptions.data_api_exceptions import DataAPITimeoutException
 from services import GmailService, get_user_credentials
-from schema import EmailFilter, DocsReq, task_states
+from schema import EmailFilter, DocsReq
 from models.db import MongodbClient, astra_collection
 from controllers.utils import (upsert, generate_query_hash, check_duplicate_query,
-    prepare_query_for_storage, extract_essential_query_fields
+    extract_essential_query_fields, process_query_update
 )
 
-router = APIRouter(prefix="/service/gmail", tags=["service"])
-collection = MongodbClient["service"]["gmail"]
+SERVICE = "gmail"
+router = APIRouter(prefix="/service/gmail", tags=[SERVICE])
+collection = MongodbClient[SERVICE]["user"]
 
 @router.post("/collect")
-def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
+def collect(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
     """
     Collects Gmail data for a specified user and initiates an asynchronous collection task.
 
@@ -42,7 +43,10 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
         - Updates or inserts the user's query parameters in the MongoDB collection.
         - Modifies the global `task_states` dictionary with the new task's status.
     """
-    credentials = get_user_credentials(email=email)
+    if user_id is None:
+        user_id = email
+    _id = f"{user_id}/{email}"
+    credentials = get_user_credentials(service=SERVICE, _id=_id)
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
                                      "error": "Invalid or expired credentials."}, status_code=401)
@@ -51,30 +55,20 @@ def collect(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     task = {
         "id": f"{str(uuid.uuid4())}",
         "status": "pending",
-        "service": "gmail",
+        "service": SERVICE,
         "type": "manual",
         "query": query
     }
-    service = GmailService(credentials, email, task)
+    service = GmailService(credentials, user_id, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
-    # data = {
-    #     "_id": email,
-    #     "query": query
-    # }
-    # collection.update_one(
-    #     { '_id': email },
-    #     { '$set': data },
-    #     upsert=True
-    # )
     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
-    upsert(email, task)
-    task_states[task["id"]] = "Pending"
-    upsert(email, query, collection=collection, size=10, field="queries")
+    upsert(_id, task, SERVICE)
+    upsert(_id, query, SERVICE, "user")
     return JSONResponse(content=task)
 
 @router.post("/preview")
-def preview(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
+def preview(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
     """
     Handles the chat POST request.
 
@@ -84,14 +78,17 @@ def preview(body: EmailFilter, email: str = Query(...)) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    credentials = get_user_credentials(email=email)
+    if user_id is None:
+        user_id = email
+    credentials = get_user_credentials(service = SERVICE, _id=f"{user_id}/{email}")
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False}, status_code=401)
     service = GmailService(credentials)
     return JSONResponse(content=service.preview(body.model_dump()))
 
 @router.get("/query")
-def get_query(email: str = Query(...), query_id: str = Query(...)) -> JSONResponse:
+def get_query(email: str = Query(...), user_id: str = Query(None),
+              query_id: str = Query(...)) -> JSONResponse:
     """
     Retrieves a specific email query for a user from the MongoDB collection.
 
@@ -102,19 +99,21 @@ def get_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRespon
     Returns:
         JSONResponse: A JSON response containing the requested email query.
     """
+    if user_id is None:
+        user_id = email
     required_fields = [
         "id", "subject", "from_email", "to_email", "cc_email", "has_words", 
         "not_has_words", "before", "after", "max_results", "topics"
     ]
-
     #check if user exists
-    user = collection.find_one({"_id": email})
+    _id = f"{user_id}/{email}"
+    user = collection.find_one({"_id": _id})
     if user is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
 
     # Use aggregation to filter fields at database level
     pipeline = [
-        {"$match": {"_id": email}},
+        {"$match": {"_id": _id}},
         {"$unwind": "$queries"},
         {"$match": {"queries.id": query_id}},
         {"$project": {
@@ -136,11 +135,10 @@ def get_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRespon
             content={"error": f"Query with ID '{query_id}' not found for user."},
             status_code=404
         )
-
     return JSONResponse(content=result[0]["query"], status_code=200)
 
 @router.get("")
-def valid(email: str = Query(...)) -> JSONResponse:
+def validate(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
     """
     Handles the chat POST request.
 
@@ -150,24 +148,15 @@ def valid(email: str = Query(...)) -> JSONResponse:
     Returns:
         str: The generated response from the chat function.
     """
-    # cred_dict = collection.find_one({"_id": email}, projection={"token": 1, "refresh_token": 1})
-    # if cred_dict is None:
-    #     return JSONResponse(content={"error": "User not found."}, status_code=404)
-    # credentials = Credentials(
-    #     token=cred_dict["token"],
-    #     refresh_token=cred_dict["refresh_token"],
-    #     token_uri="https://oauth2.googleapis.com/token",
-    #     client_id=os.environ.get("CLIENT_ID"),
-    #     client_secret=os.environ.get("CLIENT_SECRET"),
-    #     scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    # )
-    credentials = get_user_credentials(email=email)
+    if user_id is None:
+        user_id = email
+    credentials = get_user_credentials(service = SERVICE, _id=f"{user_id}/{email}")
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False}, status_code=401)
     return JSONResponse(content={"valid": True})
 
 @router.get("/queries")
-def get_queries(email: str = Query(...)) -> JSONResponse:
+def get_queries(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
     """
     Retrieves all email queries for a specific user from the MongoDB collection.
 
@@ -177,12 +166,13 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
     Returns:
         JSONResponse: A JSON response containing the user's email queries.
     """
-    user = collection.find_one({"_id": email})
+    _id = f"{user_id}/{email}"
+    user = collection.find_one({"_id": _id})
     if user is None:
         return JSONResponse(content={"error": "User not found."}, status_code=404)
 
     pipeline = [
-        {"$match": {"_id": email}},
+        {"$match": {"_id": _id}},
         {"$unwind": "$queries"},
         {"$sort": {"queries.createdTime": -1}},
         {"$group": {
@@ -212,12 +202,14 @@ def get_queries(email: str = Query(...)) -> JSONResponse:
             "service": query["task"]["service"] if "task" in query else query.get("service", ""),
             "type": query["task"]["type"] if "task" in query else query.get("type", ""),
             "createdTime": query.get("createdTime", ""),
+            "title": query.get("title", ""),
         }
         processed_queries.append(processed_query)
     return JSONResponse(content=processed_queries, status_code=200)
 
 @router.post("/docs")
-def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
+def retrieve_docs(
+    body: DocsReq, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
     """
     Retrieves all documents for a specific user from the MongoDB collection.
 
@@ -227,16 +219,18 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
     Returns:
         JSONResponse: A JSON response containing the user's documents.
     """
-    credentials = get_user_credentials(email=email)
-
+    if user_id is None:
+        user_id = email
+    credentials = get_user_credentials(service = SERVICE, _id=f"{user_id}/{email}")
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
                                      "error": "Invalid or expired credentials."}, status_code=401)
 
     _filter = {
-        "metadata.userId": email,
-        "metadata.type": "gmail",
-        "metadata.date": { "$gte": datetime.fromtimestamp(
+        "metadata.userId": user_id,
+        "metadata.email": email,
+        "metadata.service": SERVICE,
+        "metadata.lastModified": { "$gte": datetime.fromtimestamp(
                 int((datetime.now() - timedelta(days=30)).timestamp()), tz=timezone.utc) }
     }
 
@@ -253,14 +247,7 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
             {"id": d["metadata"]["msgId"]}
             for d in results
         ]
-        # seen = set()
-        # messages = []
-        # for d in results:
-        #     if d["metadata"]["msgId"] in seen and len(seen) > body.limit:
-        #         continue
-        #     seen.add(d["metadata"]["msgId"])
-        #     messages.append({"id": d["metadata"]["msgId"]})
-        service = GmailService(credentials, email)
+        service = GmailService(credentials, user_id, email)
         result = {
             "docs": service.preview(messages=messages) if len(messages) > 0 else [],
             "skip": body.skip + len(messages),
@@ -276,7 +263,8 @@ def retrieve_docs(body: DocsReq, email: str = Query(...)) -> JSONResponse:
         return JSONResponse(content=response, status_code=200)
 
 @router.delete("/query")
-def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONResponse:
+def delete_query(email: str = Query(...), user_id: str = Query(None),
+                 query_id: str = Query(...)) -> JSONResponse:
     """
     Deletes a specific email query for a user from the MongoDB collection.
 
@@ -287,14 +275,16 @@ def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRes
     Returns:
         JSONResponse: A JSON response indicating whether the deletion was successful or not.
     """
-    #check if the user exists and has the query
+    if user_id is None:
+        user_id = email
+    _id = f"{user_id}/{email}"
     user_doc = collection.find_one(
-        {"_id": email, "queries.id": query_id},
+        {"_id": _id, "queries.id": query_id},
         projection={"queries.$": 1}
     )
     if not user_doc:
         # Check if user exists at all
-        user_exists = collection.find_one({"_id": email}, projection={"_id": 1})
+        user_exists = collection.find_one({"_id": _id}, projection={"_id": 1})
         if not user_exists:
             return JSONResponse(
                 content={"error": "User not found."},
@@ -305,7 +295,7 @@ def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRes
             status_code=404
         )
     result = collection.update_one(
-        {"_id": email},
+        {"_id": _id},
         {"$pull": {"queries": {"id": query_id}}}
     )
     if result.modified_count > 0:
@@ -313,7 +303,8 @@ def delete_query(email: str = Query(...), query_id: str = Query(...)) -> JSONRes
     return JSONResponse(content={"error": "Failed to delete query"}, status_code=500)
 
 @router.post("/query")
-def post_query(body: EmailFilter, email: str = Query(...),
+def update_query(
+    body: EmailFilter, email: str = Query(...), user_id: str = Query(None),
         query_id:str = Query(None)) -> JSONResponse:
     """
     Collects Gmail data for a specified user and initiates an asynchronous collection task.
@@ -339,7 +330,9 @@ def post_query(body: EmailFilter, email: str = Query(...),
         - Updates or inserts the user's query parameters in the MongoDB collection.
         - Modifies the global `task_states` dictionary with the new task's status.
     """
-    credentials = get_user_credentials(email=email)
+    if user_id is None:
+        user_id = email
+    credentials = get_user_credentials(service = SERVICE, _id=f"{user_id}/{email}")
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False,
                                      "error": "Invalid or expired credentials."}, status_code=401)
@@ -347,7 +340,6 @@ def post_query(body: EmailFilter, email: str = Query(...),
     query = {k: v for k, v in body.items() if v is not None}
     del query["max_results"]
     query_hash = generate_query_hash(query)
-    # Check for existing query with same hash
     existing_query = check_duplicate_query(collection, email, query_hash, query_id)
 
     if existing_query:
@@ -359,93 +351,40 @@ def post_query(body: EmailFilter, email: str = Query(...),
             },
             status_code=200
         )
-
-
+    task = {
+        "id": str(uuid.uuid4()),
+        "status": "pending",
+        "service": SERVICE,
+        "type": "manual",
+        "query": query
+    }
+    service = GmailService(credentials, user_id, email, task)
     if query_id:
-        return _handle_query_update(credentials, email, query_id, query, query_hash)
-
-    return _handle_query_creation(credentials, email, query, query_hash)
-
-def _handle_query_update(credentials, email: str, query_id: str,
-    query_params: dict, query_hash: str) -> JSONResponse:
-    """Handle updating an existing query."""
-    # Check if query exists
-    query_exists = collection.find_one(
-        {"_id": email, "queries.id": query_id},
-        projection={"queries.$": 1}
-    )
-    if not query_exists:
-        return JSONResponse(
-            content={"error": f"Query with ID '{query_id}' not found for user."},
-            status_code=404
-        )
-
-    # Create task and prepare storage query
-    task_id = str(uuid.uuid4())
+        query, result = process_query_update(user_id, email, query_id, query, query_hash)
+        if result.modified_count > 0:
+            task = {
+                "id": str(uuid.uuid4()),
+                "status": "pending",
+                "service": SERVICE,
+                "type": "manual",
+                "query": query
+            }
+            threading.Thread(target=service.collect, args=[query]).start()
+            return JSONResponse(
+                content={
+                    "status": "query updated and collection started",
+                    "task": task
+                },
+                status_code=200
+            )
+        return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
     task = {
-        "id": task_id,
-        "status": "pending",
-        "service": "gmail",
-        "type": "manual",
-        "query": query_params
-    }
-
-    storage_query = prepare_query_for_storage(query_params, query_id, query_hash)
-    storage_query["createdTime"] = query_exists["queries"][0].get("createdTime")
-    storage_query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-
-    # Update in database
-    result = collection.update_one(
-        {"_id": email, "queries.id": query_id},
-        {"$set": {"queries.$": storage_query}}
-    )
-    if result.modified_count > 0:
-        _start_collection_task(credentials, email, task, storage_query)
-
-        return JSONResponse(
-            content={
-                "status": "query updated and collection started",
-                "task": task
-            },
-            status_code=200
-        )
-
-    return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
-
-def _handle_query_creation(credentials, email: str,
-        query_params: dict, query_hash: str) -> JSONResponse:
-    """Handle creating a new query."""
-    # Create task
-    task_id = str(uuid.uuid4())
-    task = {
-        "id": task_id,
-        "status": "pending",
-        "service": "gmail",
-        "type": "manual",
-        "query": query_params
-    }
-
-    # Prepare storage query
-    storage_query = prepare_query_for_storage(query_params, task_id, query_hash)
-
-    # Start collection task
-    _start_collection_task(credentials, email, task, storage_query)
-
-    return JSONResponse(content=task)
-
-def _start_collection_task(credentials, email: str, task: dict, query: dict) -> None:
-    """
-    Helper function to start a Gmail collection task.
-    
-    Args:
-        credentials: Gmail API credentials
-        email (str): User email
-        task (dict): Task information
-        query (dict): Query parameters
-    """
-    service = GmailService(credentials, email, task)
+            "id": str(uuid.uuid4()),
+            "status": "pending",
+            "service": SERVICE,
+            "type": "manual",
+            "query": query
+        }
     threading.Thread(target=service.collect, args=[query]).start()
-
-    # Update task states and database
-    upsert(email, task)
-    task_states[task["id"]] = "Pending"
+    upsert(f"{user_id}/{email}", task, SERVICE)
+    return JSONResponse(content=task)

@@ -1,124 +1,107 @@
 """Module for defining the main routes of the API."""
 import uuid
-import threading
 from venv import logger
 from typing import List
-from fastapi import APIRouter, File, UploadFile, HTTPException, Query
+from fastapi import APIRouter, File, UploadFile, Query
 from fastapi.responses import JSONResponse
-from controllers.utils import upsert
-from controllers.loader import (
-    load_docx, load_pdf,
-    load_img,
-    FileAlreadyExistsError,
-    upload_file_to_azure, get_files, delete_file)
-from schema import task_states
+from services.file import FileService, FileAlreadyExistsError
 
 router = APIRouter(prefix="/file", tags=["file"])
 
 
 @router.post("")
-async def load(files: List[UploadFile] = File(...), email: str = Query(...)) -> JSONResponse:
+async def upload_files(files: List[UploadFile] = File(...),
+                    user_id: str = Query(None)) -> JSONResponse:
     """
-    Handles the chat POST request.
-
+    Upload and process multiple files.
+    
     Args:
-        query (ReqData): The request data containing the query parameters.
-
+        files (List[UploadFile]): List of uploaded files
+        user_id (str): User ID
+        
     Returns:
-        str: The generated response from the chat function.
+        JSONResponse: List of task information for each file
     """
-    if len(files)  > 10:
-        return JSONResponse(status_code=400,
+    if len(files) > 10:
+        return JSONResponse(
+            status_code=400,
             content={"error": "Too many files uploaded. Please upload up to 10 files."}
         )
+
     tasks = []
     for file in files:
-        content = await file.read()
-        task = {
-            "id": f"{str(uuid.uuid4())}",
-            "status": "pending",
-            "service": "file",
-            "type": "manual"
-        }
-        task_states[task["id"]] = "Pending"
-        upsert(email, task)
         try:
+            content = await file.read()
+            task = {
+                "id": str(uuid.uuid4()),
+                "status": "pending",
+                "service": "file",
+                "type": "manual"
+            }
 
-            if file.content_type == "application/pdf":
-                threading.Thread(
-                target=load_pdf, args=(content, file.filename,
-                email, task)
-                ).start()
-            elif file.content_type == \
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                threading.Thread(
-                    target=load_docx, args=(content, file.filename, email, task)
-                    ).start()
-            elif file.content_type in ["image/png", "image/jpeg"]:
-                threading.Thread(
-                    target=load_img, args=(content, file.filename, email, task)
-                ).start()
-            else:
-                task["status"] = "failed"
-                task["error"] = f"Unsupported file type: {file.content_type}"
-                task_states[task["id"]] = "Failed"
-                upsert(email, task)
-                tasks.append(task)
-                continue
-            upload_file_to_azure(content, file.filename, email)
+            # Create service instance and process file
+            service = FileService(user_id, task)
+            result = service.process_file(content, file.filename, file.content_type)
+            tasks.append(result)
 
-        except (FileAlreadyExistsError, Exception)as e: # pylint: disable=broad-except
+        except (FileAlreadyExistsError, ValueError) as e:
             task["status"] = "failed"
             task["error"] = str(e)
-            task_states[task["id"]] = "Failed"
-            upsert(email, task)
-
-        tasks.append(task)
+            tasks.append(task)
+        except Exception as e: # pylint: disable=broad-exception-caught
+            logger.error("Error processing file %s: %s", file.filename, e)
+            task = {
+                "id": str(uuid.uuid4()),
+                "status": "failed",
+                "error": str(e),
+                "service": "file",
+                "type": "manual"
+            }
+            tasks.append(task)
 
     return JSONResponse(content=tasks)
 
 @router.get("")
-async def get_azure_files(email: str = Query(...)) -> JSONResponse:
+async def get_user_files(user_id: str = Query(None)) -> JSONResponse:
     """
-    Retrieves the list of files uploaded by the user.
-
+    Retrieve list of files uploaded by the user.
+    
     Args:
-        email (str): The email of the user.
-
+        user_id (str): User ID
+        
     Returns:
-        JSONResponse: A response containing the list of files.
+        JSONResponse: List of file metadata
     """
     try:
-        files = get_files(email)
+        service = FileService(user_id)
+        files = service.get_files()
         return JSONResponse(content=files)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    except Exception as e: # pylint: disable=broad-exception-caught
+        logger.error("Error retrieving files for user %s: %s", user_id, e)
+        return JSONResponse(status_code=500, content=str(e))
 
 @router.delete("")
-async def delete(email: str = Query(...), file_name: str = Query(...),) -> JSONResponse:
+async def delete_user_file(user_id: str = Query(None), file_name: str = Query(...)) -> JSONResponse:
     """
-    Deletes a file from Azure storage and vector database.
-
+    Delete a file from storage and vector database.
+    
     Args:
-        email (str): The email of the user.
-        file_name (str): The name of the file to be deleted.
-
+        user_id (str): User ID
+        file_name (str): Name of file to delete
+        
     Returns:
-        JSONResponse: A response indicating the success or failure of the deletion.
+        JSONResponse: Deletion result
     """
     try:
-        result = delete_file(email, file_name)
+        service = FileService(user_id)
+        result = service.delete_file(file_name)
 
         if result["success"]:
-            return JSONResponse(
-                status_code=200,
-                content=result
-            )
+            return JSONResponse(status_code=200, content=result)
         return JSONResponse(
             status_code=404 if "not found" in result["error"].lower() else 500,
             content=result
         )
-
-    except Exception as e:
+    except Exception as e: # pylint: disable=broad-exception-caught
         logger.error("Error in delete endpoint: %s", e)
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse(status_code=500, content=str(e))

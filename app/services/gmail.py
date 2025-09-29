@@ -4,30 +4,27 @@ This module provides a utility class, `GmailService`, for interacting with the G
 import base64
 import hashlib
 import os
-import threading
-
 
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
 
 from datetime import datetime, timezone, timedelta
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from ics import Calendar
-from langchain_community.document_loaders import (
-    CSVLoader,
-    PyPDFLoader,
-    UnstructuredExcelLoader,
-    UnstructuredImageLoader,
-)
-from langchain_core.documents import Document
-from schema import task_states
-from models.db import vstore, astra_collection, MongodbClient
+# from ics import Calendar
+# from langchain_community.document_loaders import (
+#     CSVLoader,
+#     PyPDFLoader,
+#     UnstructuredExcelLoader,
+#     UnstructuredImageLoader,
+# )
+from controllers.file import FileHandler, CalendarLoader
 from controllers.utils import upsert, check_relevance
+from langchain_core.documents import Document
+from models.db import vstore, astra_collection, MongodbClient
 
-collection = MongodbClient["service"]["gmail"]
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SERVICE = "gmail"
+collection = MongodbClient[SERVICE]["user"]
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
 ATTACHMENTS_DIR = "cache"
@@ -54,7 +51,7 @@ class GmailService():
         service:
             An authenticated Gmail API service instance used to interact with the Gmail API.
     """
-    def __init__(self, credentials, email: str = None, task: str = None):
+    def __init__(self, credentials, user_id: str = None, email: str = None, task: str = None):
         """
         Initializes the Gmail controller with the provided email address.
 
@@ -65,10 +62,12 @@ class GmailService():
         self.service = build("gmail", "v1", credentials=credentials)
         self.email = email
         self.task = task
+        self.user_id = user_id
+        self._id = f"{self.user_id}/{self.email}"
         if email and task:
             self.task = task
             self.email = email
-            upsert(self.email, self.task)
+            upsert(self._id, self.task, "gmail")
 
     def _parse_query(self, params) -> str:
         """
@@ -259,21 +258,23 @@ class GmailService():
                 emails.append(email)
             except HttpError:
                 logger.error("Requested entity was not found with ID: %s", message['id'])
-                astra_collection.delete_many({
+                result = astra_collection.delete_many({
                     "$and": [
-                        {"metadata.userId": self.email},
-                        {"metadata.type": "gmail"},
+                        {"metadata.userId": self.user_id},
+                        {"metadata.email": self.email},
+                        {"metadata.service": "gmail"},
                         {"metadata.msgId": message['id']}
                     ]
                 })
-                logger.info(f"Deleted {result.deleted_count} documents for message ID: {message['id']}")
+                logger.info("Deleted %d documents for message ID: %s",
+                           result.deleted_count, message['id'])
         return emails
 
     def _get_metadata(self, msg: dict) -> dict:
         metadata = {}
         metadata["threadId"] = msg["threadId"]
         metadata["msgId"] = msg["id"]
-        metadata["type"] = "gmail"
+        metadata["service"] = "gmail"
         for header in msg["payload"]["headers"]:
             if header["name"] == "From":
                 metadata["from"] = header["value"]
@@ -287,7 +288,8 @@ class GmailService():
         metadata["date"] = datetime.fromtimestamp(
             int(msg["internalDate"]) / 1000, tz=timezone.utc)
         metadata["lastModified"] = datetime.now(timezone.utc)
-        metadata["userId"] = self.service.users().getProfile(  # pylint: disable=no-member
+        metadata["userId"] = self.user_id
+        metadata["email"] = self.service.users().getProfile(  # pylint: disable=no-member
             userId="me").execute().get("emailAddress")
         return metadata
 
@@ -304,16 +306,6 @@ class GmailService():
             attach_docs = []
             for part in msg["payload"]["parts"]:
                 mime_types.append(part["mimeType"])
-                # if part["mimeType"] == "text/plain" and "text/html" not in mime_types:
-                #     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                #     metadata["mimeType"] = part["mimeType"]
-                #     metadata["id"] = msg_id
-                #     documents.append(Document(page_content=body, metadata=metadata))
-                # elif part["mimeType"] == "text/html" and "text/plain" not in mime_types:
-                #     body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                #     metadata["mimeType"] = part["mimeType"]
-                #     metadata["id"] = msg_id
-                #     documents.append(Document(page_content=body, metadata=metadata))
                 mime_type = part["mimeType"]
                 if mime_type in ["text/plain", "text/html"]:
                     if mime_type not in [doc.metadata["mimeType"] for doc in documents]:
@@ -348,66 +340,29 @@ class GmailService():
                     path = os.path.join(".", ATTACHMENTS_DIR, f"{msg['id']}_{part['filename']}")
                     with open(path, "wb") as f:
                         f.write(file_data)
-                    if part["mimeType"] == "application/pdf":
-                        attach_docs = PyPDFLoader(path).load()
-                    elif part["mimeType"] == "image/png" or part["mimeType"] == "image/jpeg":
+                    if part["mimeType"] == "application/ics":
+                        calendar = CalendarLoader(file_path=path, part=part,
+                         msg_id=msg_id, file_data=file_data)
+                        attach_docs = calendar.load()
+                    else:
                         try:
-                            attach_docs = UnstructuredImageLoader(path).load()
-                        except (ValueError, TypeError) as e:
-                            logger.error("Error loading image: %s", e)
-                    elif part["filename"].endswith(".csv"):
-                        attach_docs = CSVLoader(path).load()
-                    elif (
-                        part["mimeType"]
-                        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    ):
-                        try:
-                            attach_docs = UnstructuredExcelLoader(path).load()
-                        except ImportError as e:
-                            logger.warning("Skip Excel file - missing openpyxl dependency %s", e)
-                            logger.warning("Fix: pip install openpyxl")
                             attach_docs = []
-                        except (ValueError, TypeError, OSError) as e:
-                            logger.error("Error processing Excel file: %s", e)
+                            for document in FileHandler(path=path).process():
+                                attach_docs.append(document)
+                        except Exception as e:
+                            logger.error("Error processing attachment %s: %s", part["filename"], e)
                             attach_docs = []
-                    elif part["mimeType"] == "application/ics":
-                        with open(path, "r", encoding="utf-8") as f:
-                            calendar = Calendar(f.read())
-                        for event in calendar.events:
-                            documents.append(
-                                Document(
-                                    page_content=(f"Event: {event.name}\n"
-                                    f"Description: {event.description}\n"
-                                    f"Start: {event.begin}\n"
-                                    f"End: {event.end}"),
-                                    metadata={
-                                        "attachment": part["filename"],
-                                        "mimeType": part["mimeType"],
-                                        "location": event.location,
-                                        "created": event.created.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "last_modified": event.last_modified.strftime(
-                                            "%d/%m/%Y %H:%M:%S"
-                                        ),
-                                        "start": event.begin.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "end": event.end.strftime("%d/%m/%Y %H:%M:%S"),
-                                        "id": (f"{msg_id}-{part['filename']}-"
-                                        f"{hashlib.sha256(file_data).hexdigest()}")
-                                    }
-                                )
-                            )
                     if os.path.exists(path):
                         os.remove(path)
                     for index, document in enumerate(attach_docs or []):
                         if "page_label" in document.metadata:
                             document.metadata["page"] = document.metadata["page_label"]
                         document.metadata["attachId"] = part["body"]["attachmentId"]
-                        attachment = part["filename"]
-                        document.metadata["title"] = attachment.split(".")[0]
-                        document.metadata["ext"] = attachment.split(".")[-1]
+                        document.metadata["filename"] = part["filename"]
                         document.metadata = {
                             key: value
                             for key, value in document.metadata.items()
-                            if key in ["ext", "page", "title", "attachId"] \
+                            if key in ["filename", "page", "attachId"] \
                                 and value is not None and value != ""
                         }
                         document.metadata.update(metadata)
@@ -426,13 +381,14 @@ class GmailService():
             documents.append(Document(page_content=body, metadata=metadata, id=msg_id))
         return documents
 
-    def _initialize_collection_task(self, query):
+    def _init_task(self, query):
         """Initialize the collection task and update status."""
         self.task['status'] = "in progress"
-        upsert(self.email, self.task)
+        upsert(self._id, self.task, "gmail")
         if self.task["type"] == "manual":
+            query["task"] = {} if "task" not in query else query["task"]
             query["task"]["status"] = "in progress"
-            upsert(self.email, query, collection=collection, size=10, field="queries")
+            upsert(self._id, query, "gmail", "users")
         logger.info(" Task %s status updated to 'in progress'", self.task["id"])
 
     def _update_query_status(self, query, messages_processed):
@@ -442,7 +398,7 @@ class GmailService():
             query["task"]["count"] = messages_processed
             query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self.task["query"] = query
-            upsert(self.email, query, collection=collection, size=10, field="queries")
+            upsert(self._id, query, "gmail", "users")
             logger.info(" Query status updated")
 
     def collect(self, query):
@@ -473,10 +429,10 @@ class GmailService():
         """
         logger.info("Starting Gmail collection for user with query: %s", query)
         try:
-            self._initialize_collection_task(query)
-            documents = []
+            self._init_task(query)
             messages_processed = 0
             for message in self._search(query, max_results=200, check_next_page=True):
+                documents = []
                 logger.info("Processing message with ID: %s", message["id"])
                 msg = self.service.users().messages().get(  # pylint: disable=no-member
                     userId="me", id=message["id"], format="full").execute()
@@ -493,8 +449,9 @@ class GmailService():
                         result = astra_collection.delete_many({
                             "$and": [
                                 {"metadata.threadId": msg["threadId"]},
-                                {"metadata.type": "gmail"},
-                                {"metadata.userId": self.email}
+                                {"metadata.service": "gmail"},
+                                {"metadata.email": self.email},
+                                {"metadata.userId": self.user_id}
                             ]
                         })
                         logger.info(
@@ -516,9 +473,8 @@ class GmailService():
                         raise upload_error
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-            task_states[self.task["id"]] = "Completed"
             self._update_query_status(query, messages_processed)
-            upsert(self.email, self.task)
+            upsert(self._id, self.task, "gmail")
             logger.info("✅ Collection completed for task %s", self.task["id"])
         except (ValueError, TypeError, KeyError,
                 IndexError, ConnectionError, TimeoutError, OSError, IOError) as e:
@@ -526,9 +482,9 @@ class GmailService():
                          self.task["id"], str(e), exc_info=True)
             # Mark task as failed
             self.task['status'] = "failed"
-            task_states[self.task["id"]] = "Failed"
+            # task_states[self.task["id"]] = "Failed"
             self._update_query_status(query, 0)
-            upsert(self.email, self.task)
+            upsert(self._id, self.task, "gmail")
             raise
 
     def preview(self, query = None, messages: list[dict] = None) -> list:
@@ -553,36 +509,3 @@ class GmailService():
         except (KeyError, ValueError, TypeError) as e:
             logger.info("An error occurred: %s", e)
             return []
-
-
-def get_user_credentials(user_creds: dict = None, email: str = None) -> Credentials:
-    """
-    Retrieves user credentials from the MongoDB collection for the specified user email.
-
-    Args:
-        user_creds (dict, optional): The user credentials dictionary retrieved from the database.
-        email (str, optional): The email address of the user.
-
-    Returns:
-        Credentials: The user's credentials if found, otherwise raises an error.
-    
-    Raises:
-        ValueError: If user credentials are not found.
-    """
-    if user_creds is None:
-        user_creds = collection.find_one(
-            {"_id": email},
-            projection={"token": 1, "refresh_token": 1}
-        )
-        if not user_creds:
-            logger.error("User credentials not found for: %s", email)
-            raise ValueError("User credentials not found")
-    credentials = Credentials(
-        token=user_creds["token"],
-        refresh_token=user_creds["refresh_token"],
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.environ.get("CLIENT_ID"),
-        client_secret=os.environ.get("CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    )
-    return credentials

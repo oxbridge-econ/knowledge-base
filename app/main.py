@@ -3,8 +3,8 @@ import logging
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from schema import task_states
-from router import gmail, file, extract
+# from schema import task_states
+from router import gmail, file, extract, drive
 from models.db import MongodbClient
 
 logging.basicConfig(
@@ -18,6 +18,7 @@ app = FastAPI(docs_url="/")
 app.include_router(gmail.router)
 app.include_router(file.router)
 app.include_router(extract.router)
+app.include_router(drive.router)
 
 origins = [
     "*"
@@ -40,20 +41,20 @@ def health():
     """
     return "OK"
 
-@app.get("/status/{task_id}")
-async def get_status(task_id: str):
-    """
-    Retrieve the status of a task by its ID.
+# @app.get("/status/{task_id}")
+# async def get_status(task_id: str):
+#     """
+#     Retrieve the status of a task by its ID.
 
-    Args:
-        task_id (str): The unique identifier of the task.
+#     Args:
+#         task_id (str): The unique identifier of the task.
 
-    Returns:
-        dict: A dictionary containing the task ID and its status. If the task ID is not found,
-              the status will be "NOT_FOUND".
-    """
-    status = task_states.get(task_id, "NOT_FOUND")
-    return {"task_id": task_id, "status": status}
+#     Returns:
+#         dict: A dictionary containing the task ID and its status. If the task ID is not found,
+#               the status will be "NOT_FOUND".
+#     """
+#     status = task_states.get(task_id, "NOT_FOUND")
+#     return {"task_id": task_id, "status": status}
 
 @app.get("/tasks/{task_type}")
 async def get_tasks(task_type: str, email: str = Query(...)) -> JSONResponse:

@@ -4,9 +4,14 @@ from venv import logger
 from datetime import datetime
 import hashlib
 from langchain_core.documents import Document
-from openai import RateLimitError
+
+from fastapi.responses import JSONResponse
+
+from openai import RateLimitError, OpenAIError
+
 
 from models.db import MongodbClient
+from models.llm import GPTModel
 from controllers.topic import detector
 
 def check_relevance(documents: Document, topics: list[str]) -> list[Document]:
@@ -58,43 +63,33 @@ def check_relevance(documents: Document, topics: list[str]) -> list[Document]:
                 break
     return rel_documents
 
-
-def upsert(
-    _id,
-    element,
-    *,
-    collection=None,
-    db="task",
-    size: int = 100,
-    field="tasks"
-):
+def upsert(_id, element, service: str, name: str = "manual") -> None:
     """
-    Inserts or updates an element within a specified collection and field in a MongoDB database.
+    Inserts or updates an element in a MongoDB collection for a given service and name.
 
-    If an element with the same 'id' exists in the specified field array,
-    updates its fields (except 'id').
-    If not, appends the element to the array, maintaining a maximum size.
+    If the element with the specified 'id' exists
+    in the collection's array field ('queries' for 'user', 'tasks' otherwise),
+    it updates the element's fields (excluding 'id').
+    If not, it appends the element to the array,
+    maintaining a maximum size (10 for 'queries', 100 for 'tasks').
+    Automatically sets 'createdTime' and 'updatedTime' fields.
 
     Args:
-        _id: The unique identifier of the parent document.
-        element (dict): The element to insert or update. Must contain an 'id' key.
-        collection (Optional[Collection]): The MongoDB collection to operate on.
-            If None, uses MongodbClient[db][element["type"]].
-        db (str, optional): The database name to use if collection is None. Defaults to "task".
-        size (int, optional):
-            The maximum number of elements to keep in the field array. Defaults to 10.
-        field (str, optional):
-            The name of the array field to update within the document. Defaults to "tasks".
+        _id: The unique identifier of the document in the collection.
+        element (dict): The element to upsert, must contain an 'id' field.
+        service (str): The MongoDB database name.
+        name (str): The collection name ('user' or other).
 
     Returns:
         None
-
-    Side Effects:
-        Modifies the specified MongoDB document by updating or appending the element.
-        Sets 'createdTime' and 'updatedTime' fields on the element as appropriate.
     """
-    if collection is None:
-        collection = MongodbClient[db][element["type"]]
+    if name == "user":
+        field = "queries"
+        size = 10
+    else:
+        field = "tasks"
+        size = 100
+    collection = MongodbClient[service][name]
     current_time = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
     if "createdTime" not in element:
         element["createdTime"] = current_time
@@ -118,7 +113,6 @@ def upsert(
             },
             upsert=True
         )
-
 
 def generate_query_hash(query_params: dict) -> str:
     """
@@ -170,7 +164,7 @@ def extract_essential_query_fields(query_data: dict) -> dict:
         "id", "subject", "from_email", "to_email", "cc_email", 
         "has_words", "not_has_words", "before", "after", "topics", "has_attachment",
         "createdTime", "count",
-        "status", "service", "type"
+        "status", "service", "type", "title"
     ]
 
     return {
@@ -233,6 +227,78 @@ def check_duplicate_query(collection, email: str,
         return result[0]["query"]
     return None
 
+def generate_query_title(filters: dict) -> str: # pylint: disable=too-many-branches
+    """
+    Generate a descriptive title for a Gmail query based on its filters using AI.
+    
+    Args:
+        filters (dict): Query filter parameters
+        
+    Returns:
+        str: Generated title for the query
+    """
+    try:
+        # Build filter description
+        filter_parts = []
+        if filters.get("subject"):
+            filter_parts.append(f"Subject: {filters['subject']}")
+        if filters.get("from_email"):
+            filter_parts.append(f"From: {filters['from_email']}")
+        if filters.get("to_email"):
+            filter_parts.append(f"To: {filters['to_email']}")
+        if filters.get("cc_email"):
+            filter_parts.append(f"CC: {filters['cc_email']}")
+        if filters.get("has_words"):
+            filter_parts.append(f"Keywords: {filters['has_words']}")
+        if filters.get("not_has_words"):
+            filter_parts.append(f"Exclude: {filters['not_has_words']}")
+        if filters.get("before"):
+            filter_parts.append(f"Before: {filters['before']}")
+        if filters.get("after"):
+            filter_parts.append(f"After: {filters['after']}")
+        if filters.get("has_attachment"):
+            filter_parts.append("With attachments")
+        if filters.get("topics") and isinstance(filters["topics"], list) and filters["topics"]:
+            filter_parts.append(f"Topics: {', '.join(filters['topics'])}")
+
+        if not filter_parts:
+            return "All Emails"
+
+        filter_description = " | ".join(filter_parts)
+
+        # Generate title using GPT
+        # pylint: disable=line-too-long
+        prompt = f"""Generate a concise, descriptive title (max 60 characters) for a Gmail query with these filters:
+{filter_description}
+
+The title should be clear and informative, describing what emails this query would find. Examples:
+- "GitHub notifications from oxbridge-econ/finbot"
+- "SmartCareers emails to gli@oxbridge-econ.com after May 2025"
+- "FinFAST emails about Finance, Economy, AI topics"
+
+Title:"""
+
+        model = GPTModel()
+        response = model.invoke(prompt)
+        title = response.content.strip().strip('"').strip("'")
+
+        # Ensure title is not too long
+        if len(title) > 60:
+            title = title[:57] + "..."
+
+        return title
+
+    except (OpenAIError, AttributeError, TypeError, KeyError) as e:
+        logger.warning("Failed to generate AI title: %s", str(e))
+        # Fallback to simple concatenation
+        if filters.get("subject"):
+            return f"Subject: {filters['subject'][:40]}..."
+        if filters.get("from_email"):
+            return f"From: {filters['from_email'][:40]}..."
+        if filters.get("to_email"):
+            return f"To: {filters['to_email'][:40]}..."
+        return "Gmail Query"
+
 def prepare_query_for_storage(query_params: dict, task_id: str, query_hash: str) -> dict:
     """
     Prepare query parameters for storage in the database.
@@ -259,4 +325,32 @@ def prepare_query_for_storage(query_params: dict, task_id: str, query_hash: str)
         }
     })
 
+    # Generate AI title based on filters
+    storage_query["title"] = generate_query_title(storage_query)
+
     return storage_query
+
+def process_query_update(user_id: str, email: str, query_id: str,
+    query_params: dict, query_hash: str) -> JSONResponse:
+    """Handle updating an existing query."""
+    # Check if query exists
+    _id = f"{user_id}/{email}"
+    collection = MongodbClient["gmail"]["user"]
+    query_exists = collection.find_one(
+        {"_id": _id, "queries.id": query_id},
+        projection={"queries.$": 1}
+    )
+    if not query_exists:
+        return JSONResponse(
+            content={"error": f"Query with ID '{query_id}' not found for user."},
+            status_code=404
+        )
+
+    storage_query = prepare_query_for_storage(query_params, query_id, query_hash)
+    storage_query["createdTime"] = query_exists["queries"][0].get("createdTime")
+    storage_query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    result = collection.update_one(
+        {"_id": _id, "queries.id": query_id},
+        {"$set": {"queries.$": storage_query}}
+    )
+    return storage_query, result
