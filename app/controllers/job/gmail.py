@@ -7,7 +7,7 @@ import uuid
 from google.oauth2.credentials import Credentials
 from services import GmailService
 from models.db import MongodbClient
-from schema import task_states
+# from schema import task_states
 
 collection = MongodbClient["service"]["gmail"]
 
@@ -18,7 +18,6 @@ def process():
     and starting a collection task for each.
 
     For each record:
-        - Prints the record.
         - Generates a unique task ID.
         - Constructs Gmail API credentials from the record and environment variables.
         - Checks if the credentials are valid and not expired; skips the record if invalid.
@@ -54,6 +53,5 @@ def process():
             {"$set": {"lastCollectDate": current_date, "task_id": task_id}},
             upsert=True
         )
-        task_states[task_id] = "pending"
         service = GmailService(credentials)
         threading.Thread(target=service.collect, args=[record["query"], task_id]).start()

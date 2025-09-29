@@ -16,6 +16,11 @@ astra_collection = astrapy.DataAPIClient(
     os.environ["ASTRA_DB_APPLICATION_TOKEN"]).get_database(
         os.environ["ASTRA_DB_API_ENDPOINT"]).documents
 
+# result = astra_collection.delete_many({})
+
+# Print the number of documents deleted
+# print(f"Deleted {result.deleted_count} documents from the collection.")
+
 def token_length(text):
     """
     Calculates length of the encoded text using tokenizer for "text-embedding-3-small" model.
@@ -64,8 +69,6 @@ class VectorStore(AstraDBVectorStore):
             try:
                 self.add_documents(chunks, ids=ids)
                 task["status"] = "succeeded"
-                # upsert(email, task)
-                # task_states[task["id"]] = "Succeeded"
                 return True
             except (ConnectionError, TimeoutError,
                     astrapy.exceptions.data_api_exceptions.DataAPIResponseException,
@@ -75,13 +78,10 @@ class VectorStore(AstraDBVectorStore):
                     chunk.page_content = re.sub(url_pattern, '[URL]', chunk.page_content)
                 logger.info("Attempt %d failed: %s", attempt + 1, e)
                 if attempt < max_retries - 1:
-                    time.sleep(45)
+                    time.sleep(60)
                 else:
                     logger.error("Max retries reached. Operation failed.")
                     logger.error(ids)
-                    # task["status"] = "failed"
-                    # upsert(email, task)
-                    # task_states[task["id"]] = "Failed"
                     raise e
         return False
 
@@ -118,10 +118,8 @@ class VectorStore(AstraDBVectorStore):
             for index, chunk in enumerate(chunks):
                 _id = f"{chunk.metadata['id']}-{str(index)}"
                 ids.append(_id)
-            return self.add_documents_with_retry(chunks, ids,task)
+            return self.add_documents_with_retry(chunks, ids, task)
         except ValueError as e:
             logger.error("Error adding documents to vectorstore: %s", e)
             task["status"] = "failed"
-            # upsert(email, task)
-            # task_states[task["id"]] = "Failed"
             raise e
