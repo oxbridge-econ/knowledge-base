@@ -67,7 +67,6 @@ class GmailService():
         if email and task:
             self.task = task
             self.email = email
-            upsert(self._id, self.task, "gmail")
 
     def _parse_query(self, params) -> str:
         """
@@ -396,6 +395,8 @@ class GmailService():
         if self.task["type"] == "manual":
             query["task"]["status"] = self.task["status"]
             query["task"]["count"] = messages_processed
+            query["task"]["service"] = "gmail"
+            query["task"]["type"] = "manual"
             query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self.task["query"] = query
             upsert(self._id, query, "gmail", "user")
