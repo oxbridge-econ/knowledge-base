@@ -388,7 +388,7 @@ class GmailService():
         if self.task["type"] == "manual":
             query["task"] = {} if "task" not in query else query["task"]
             query["task"]["status"] = "in progress"
-            upsert(self._id, query, "gmail", "users")
+            upsert(self._id, query, "gmail", "user")
         logger.info(" Task %s status updated to 'in progress'", self.task["id"])
 
     def _update_query_status(self, query, messages_processed):
@@ -398,7 +398,7 @@ class GmailService():
             query["task"]["count"] = messages_processed
             query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self.task["query"] = query
-            upsert(self._id, query, "gmail", "users")
+            upsert(self._id, query, "gmail", "user")
             logger.info(" Query status updated")
 
     def collect(self, query):
