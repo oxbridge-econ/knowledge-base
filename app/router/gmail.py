@@ -59,7 +59,7 @@ def collect(body: EmailFilter, email: str = Query(...), user_id: str = Query(Non
         "type": "manual",
         "query": query
     }
-    query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
+    query["id"] = str(uuid.uuid4())
     logger.info("query: %s", query)
     service = GmailService(credentials, user_id, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
