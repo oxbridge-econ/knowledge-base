@@ -166,6 +166,8 @@ def get_queries(email: str = Query(...), user_id: str = Query(None)) -> JSONResp
     Returns:
         JSONResponse: A JSON response containing the user's email queries.
     """
+    if user_id is None:
+        user_id = email
     _id = f"{user_id}/{email}"
     user = collection.find_one({"_id": _id})
     if user is None:
