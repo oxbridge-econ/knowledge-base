@@ -341,6 +341,7 @@ def update_query(
                                      "error": "Invalid or expired credentials."}, status_code=401)
     body = body.model_dump()
     query = {k: v for k, v in body.items() if v is not None}
+    query["id"] = str(uuid.uuid4())
     del query["max_results"]
     query_hash = generate_query_hash(query)
     existing_query = check_duplicate_query(collection, email, query_hash, query_id)
