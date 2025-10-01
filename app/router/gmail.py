@@ -166,6 +166,8 @@ def get_queries(email: str = Query(...), user_id: str = Query(None)) -> JSONResp
     Returns:
         JSONResponse: A JSON response containing the user's email queries.
     """
+    if user_id is None:
+        user_id = email
     _id = f"{user_id}/{email}"
     user = collection.find_one({"_id": _id})
     if user is None:
@@ -198,9 +200,9 @@ def get_queries(email: str = Query(...), user_id: str = Query(None)) -> JSONResp
                           "topics", "has_attachment"]
                 and value is not None
             },
-            "count": query["task"]["count"] if "task" in query else query.get("count", 0),
-            "service": query["task"]["service"] if "task" in query else query.get("service", ""),
-            "type": query["task"]["type"] if "task" in query else query.get("type", ""),
+            "count": query.get("task", {}).get("count", 0),
+            "service": query.get("task", {}).get("service", ""),
+            "type": (query.get("task", {}).get("type", "")),
             "createdTime": query.get("createdTime", ""),
             "title": query.get("title", ""),
         }
