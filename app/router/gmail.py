@@ -60,6 +60,7 @@ def collect(body: EmailFilter, email: str = Query(...), user_id: str = Query(Non
         "query": query
     }
     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
+    logger.info("query: %s", query)
     service = GmailService(credentials, user_id, email, task)
     threading.Thread(target=service.collect, args=[query]).start()
     del query["max_results"]
