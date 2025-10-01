@@ -95,6 +95,7 @@ def upsert(_id, element, service: str, name: str = "manual") -> None:
         element["createdTime"] = current_time
     element["updatedTime"] = current_time
     update_fields = {f"{field}.$.{k}": v for k, v in element.items() if k != "id"}
+    logger.info("element: %s", element)
     result = collection.update_one(
         {
             "_id": _id,
