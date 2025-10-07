@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
-from models.db import vstore, astra_collection, MongodbClient
+from models.db import vstore, cosmos_collection, MongodbClient
 from controllers.utils import upsert
 from controllers.file import FileHandler
 from langchain_core.documents import Document
@@ -191,7 +191,7 @@ class DriveService():
                         ))
                 if len(documents) > 0:
                     try:
-                        result = astra_collection.delete_many({
+                        result = cosmos_collection.delete_many({
                             "$and": [
                                 {"metadata.id": file_info["id"]},
                                 {"metadata.service": SERVICE},

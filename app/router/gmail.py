@@ -7,9 +7,10 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
 from astrapy.exceptions.data_api_exceptions import DataAPITimeoutException
+from pymongo import ASCENDING, DESCENDING
 from services import GmailService, get_user_credentials
 from schema import EmailFilter, DocsReq
-from models.db import MongodbClient, astra_collection
+from models.db import MongodbClient, cosmos_collection
 from controllers.utils import (upsert, generate_query_hash, check_duplicate_query,
     extract_essential_query_fields, process_query_update
 )
@@ -237,24 +238,36 @@ def retrieve_docs(
     }
 
     try:
-        results = list(astra_collection.find(
-            filter=_filter,
-            projection={"metadata.msgId": 1},
-            sort={"metadata.date": SortMode.ASCENDING},
-            skip=body.skip or 0,
-            limit=body.limit or 10,
-            timeout_ms=200000
-        ))
+
+        # results = list(cosmos_collection.find(
+        #     filter=_filter,
+        #     projection={"metadata.msgId": 1},
+        #     sort={"metadata.date": SortMode.ASCENDING},
+        #     skip=body.skip or 0,
+        #     limit=body.limit or 10,
+        #     timeout_ms=200000
+        # ))
+        results = list(cosmos_collection.find(
+            _filter,  # First positional argument
+            {"metadata.msgId": 1}  # projection as second positional arg
+        ).sort("metadata.date", DESCENDING)
+         .skip(body.skip or 0)
+         .limit(body.limit or 10))
         messages = [
             {"id": d["metadata"]["msgId"]}
             for d in results
         ]
         service = GmailService(credentials, user_id, email)
+        try:
+            total = cosmos_collection.count_documents(_filter)
+        except Exception as count_error:
+            logger.warning("Count failed, using result length: %s", count_error)
+            total = len(results)
+
         result = {
             "docs": service.preview(messages=messages) if len(messages) > 0 else [],
             "skip": body.skip + len(messages),
-            "total": astra_collection.count_documents(
-                filter=_filter, upper_bound=10000, timeout_ms=200000)
+            "total": total
         }
         return JSONResponse(content=result, status_code=200)
     except DataAPITimeoutException as e:
