@@ -5,68 +5,67 @@ from venv import logger
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from astrapy.constants import SortMode
 from astrapy.exceptions.data_api_exceptions import DataAPITimeoutException
-from pymongo import ASCENDING, DESCENDING
+from pymongo import DESCENDING
 from services import GmailService, get_user_credentials
 from schema import EmailFilter, DocsReq
 from models.db import MongodbClient, cosmos_collection
 from controllers.utils import (upsert, generate_query_hash, check_duplicate_query,
-    extract_essential_query_fields, process_query_update
+    extract_essential_query_fields, process_query_update, prepare_query_for_storage
 )
 
 SERVICE = "gmail"
 router = APIRouter(prefix="/service/gmail", tags=[SERVICE])
 collection = MongodbClient[SERVICE]["user"]
 
-@router.post("/collect")
-def collect(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
-    """
-    Collects Gmail data for a specified user and initiates an asynchronous collection task.
+# @router.post("/collect")
+# def collect(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
+#     """
+#     Collects Gmail data for a specified user and initiates an asynchronous collection task.
 
-    Args:
-        body (EmailQuery): The query parameters for the email collection.
-        email (str, optional): The user's email address, provided as a query parameter.
+#     Args:
+#         body (EmailQuery): The query parameters for the email collection.
+#         email (str, optional): The user's email address, provided as a query parameter.
 
-    Returns:
-        JSONResponse: 
-            - If the user is not found, returns a 404 error with an appropriate message.
-            - If the user's credentials are invalid or expired, returns a 401 error.
-            - Otherwise, starts a background thread to collect emails,
-              updates the user's query in the database,
-              and returns a JSON response containing the task ID and its initial status.
+#     Returns:
+#         JSONResponse: 
+#             - If the user is not found, returns a 404 error with an appropriate message.
+#             - If the user's credentials are invalid or expired, returns a 401 error.
+#             - Otherwise, starts a background thread to collect emails,
+#               updates the user's query in the database,
+#               and returns a JSON response containing the task ID and its initial status.
 
-    Raises:
-        None
+#     Raises:
+#         None
 
-    Side Effects:
-        - Starts a background thread for email collection.
-        - Updates or inserts the user's query parameters in the MongoDB collection.
-        - Modifies the global `task_states` dictionary with the new task's status.
-    """
-    if user_id is None:
-        user_id = email
-    _id = f"{user_id}/{email}"
-    credentials = get_user_credentials(service=SERVICE, _id=_id)
-    if not credentials.valid or credentials.expired:
-        return JSONResponse(content={"valid": False,
-                                     "error": "Invalid or expired credentials."}, status_code=401)
-    body = body.model_dump()
-    query = {k: v for k, v in body.items() if v is not None}
-    task = {
-        "id": f"{str(uuid.uuid4())}",
-        "status": "pending",
-        "service": SERVICE,
-        "type": "manual",
-        "query": query
-    }
-    query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
-    service = GmailService(credentials, user_id, email, task)
-    threading.Thread(target=service.collect, args=[query]).start()
-    del query["max_results"]
-    upsert(_id, task, SERVICE)
-    upsert(_id, query, SERVICE, "user")
-    return JSONResponse(content=task)
+#     Side Effects:
+#         - Starts a background thread for email collection.
+#         - Updates or inserts the user's query parameters in the MongoDB collection.
+#         - Modifies the global `task_states` dictionary with the new task's status.
+#     """
+#     if user_id is None:
+#         user_id = email
+#     _id = f"{user_id}/{email}"
+#     credentials = get_user_credentials(service=SERVICE, _id=_id)
+#     if not credentials.valid or credentials.expired:
+#         return JSONResponse(content={"valid": False,
+#                                      "error": "Invalid or expired credentials."}, status_code=401)
+#     body = body.model_dump()
+#     query = {k: v for k, v in body.items() if v is not None}
+#     task = {
+#         "id": f"{str(uuid.uuid4())}",
+#         "status": "pending",
+#         "service": SERVICE,
+#         "type": "manual",
+#         "query": query
+#     }
+#     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
+#     service = GmailService(credentials, user_id, email, task)
+#     threading.Thread(target=service.collect, args=[query]).start()
+#     del query["max_results"]
+#     upsert(_id, task, SERVICE)
+#     upsert(_id, query, SERVICE, "user")
+#     return JSONResponse(content=task)
 
 @router.post("/preview")
 def preview(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
@@ -394,6 +393,8 @@ def update_query(
                 status_code=200
             )
         return JSONResponse(content={"error": "Failed to update query"}, status_code=500)
+    storage_query = prepare_query_for_storage(query, query["id"], query_hash)
+    storage_query["createdTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
     task = {
             "id": str(uuid.uuid4()),
             "status": "pending",
@@ -401,6 +402,6 @@ def update_query(
             "type": "manual",
             "query": query
         }
-    threading.Thread(target=service.collect, args=[query]).start()
+    threading.Thread(target=service.collect, args=[storage_query]).start()
     upsert(f"{user_id}/{email}", task, SERVICE)
     return JSONResponse(content=task)

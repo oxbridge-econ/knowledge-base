@@ -56,7 +56,7 @@ class CosmosVectorStore:
         """Generate embedding for text using Azure OpenAI."""
         return self.embedding_model.embed_query(text)
 
-    def add_documents_with_retry(self, chunks: list[Document], ids: list[str], 
+    def add_documents_with_retry(self, chunks: list[Document], ids: list[str],
                                   task: dict, max_retries: int = 3) -> bool:
         """
         Upserts documents to Cosmos DB with retry logic.
@@ -164,7 +164,7 @@ class CosmosVectorStore:
         result = self.collection.delete_many(filter_query)
         return {"deleted_count": result.deleted_count}
 
-    def similarity_search(self, query: str, k: int = 10, 
+    def similarity_search(self, query: str, k: int = 10,
                          filter_conditions: dict = None,
                          ef_search: int = 40) -> list[dict]:
         """

@@ -348,7 +348,7 @@ class GmailService():
                             attach_docs = []
                             for document in FileHandler(path=path).process():
                                 attach_docs.append(document)
-                        except Exception as e:
+                        except Exception as e: # pylint: disable=broad-exception-caught
                             logger.error("Error processing attachment %s: %s", part["filename"], e)
                             attach_docs = []
                     if os.path.exists(path):
@@ -475,6 +475,7 @@ class GmailService():
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self._update_query_status(query, messages_processed)
+            # pylint: disable=duplicate-code
             upsert(self._id, self.task, "gmail")
             logger.info("✅ Collection completed for task %s", self.task["id"])
         except (ValueError, TypeError, KeyError,

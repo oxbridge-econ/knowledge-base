@@ -101,7 +101,8 @@ class DriveService():
             upsert(self._id, query, SERVICE, "users")
             logger.info(" Query status updated")
 
-    def _download_file(self, file_info):
+    def download_file(self, file_info):
+        """Download a file from Google Drive."""
         if file_info['mimeType'] in EXPORT_MIME_TYPES:
             export_mime_type = EXPORT_MIME_TYPES.get(file_info['mimeType'])
             if export_mime_type == 'application/pdf':
@@ -179,7 +180,7 @@ class DriveService():
                 file_info = self.service.files().get(   # pylint: disable=no-member
                     fileId=item["id"],
                     fields="id, name, mimeType, createdTime, modifiedTime, parents").execute()
-                done, file_info = self._download_file(file_info)
+                done, file_info = self.download_file(file_info)
                 if done:
                     file_info["folderId"] = query["id"]
                     metadata = self._get_metadata(file_info)
@@ -219,6 +220,7 @@ class DriveService():
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self._update_query_status(query, file_processed)
+            # pylint: disable=duplicate-code
             upsert(self._id, self.task, SERVICE)
             logger.info("✅ Collection completed for task %s", self.task["id"])
         except (ValueError, TypeError, KeyError,
