@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.exceptions.data_api_exceptions import DataAPITimeoutException
 from pymongo import DESCENDING
+from pymongo.errors import PyMongoError
 from services import GmailService, get_user_credentials
 from schema import EmailFilter, DocsReq
 from models.db import MongodbClient, cosmos_collection
@@ -18,54 +19,6 @@ SERVICE = "gmail"
 router = APIRouter(prefix="/service/gmail", tags=[SERVICE])
 collection = MongodbClient[SERVICE]["user"]
 
-# @router.post("/collect")
-# def collect(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
-#     """
-#     Collects Gmail data for a specified user and initiates an asynchronous collection task.
-
-#     Args:
-#         body (EmailQuery): The query parameters for the email collection.
-#         email (str, optional): The user's email address, provided as a query parameter.
-
-#     Returns:
-#         JSONResponse: 
-#             - If the user is not found, returns a 404 error with an appropriate message.
-#             - If the user's credentials are invalid or expired, returns a 401 error.
-#             - Otherwise, starts a background thread to collect emails,
-#               updates the user's query in the database,
-#               and returns a JSON response containing the task ID and its initial status.
-
-#     Raises:
-#         None
-
-#     Side Effects:
-#         - Starts a background thread for email collection.
-#         - Updates or inserts the user's query parameters in the MongoDB collection.
-#         - Modifies the global `task_states` dictionary with the new task's status.
-#     """
-#     if user_id is None:
-#         user_id = email
-#     _id = f"{user_id}/{email}"
-#     credentials = get_user_credentials(service=SERVICE, _id=_id)
-#     if not credentials.valid or credentials.expired:
-#         return JSONResponse(content={"valid": False,
-#                                      "error": "Invalid or expired credentials."}, status_code=401)
-#     body = body.model_dump()
-#     query = {k: v for k, v in body.items() if v is not None}
-#     task = {
-#         "id": f"{str(uuid.uuid4())}",
-#         "status": "pending",
-#         "service": SERVICE,
-#         "type": "manual",
-#         "query": query
-#     }
-#     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
-#     service = GmailService(credentials, user_id, email, task)
-#     threading.Thread(target=service.collect, args=[query]).start()
-#     del query["max_results"]
-#     upsert(_id, task, SERVICE)
-#     upsert(_id, query, SERVICE, "user")
-#     return JSONResponse(content=task)
 
 @router.post("/preview")
 def preview(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
@@ -259,7 +212,7 @@ def retrieve_docs(
         service = GmailService(credentials, user_id, email)
         try:
             total = cosmos_collection.count_documents(_filter)
-        except Exception as count_error:
+        except PyMongoError as count_error:
             logger.warning("Count failed, using result length: %s", count_error)
             total = len(results)
 
