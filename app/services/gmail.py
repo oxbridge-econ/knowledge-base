@@ -13,7 +13,7 @@ from googleapiclient.errors import HttpError
 from langchain_core.documents import Document
 from controllers.file import FileHandler, CalendarLoader
 from controllers.utils import upsert, check_relevance
-from models.db import vstore, astra_collection, MongodbClient
+from models.db import vstore, cosmos_collection, MongodbClient
 
 SERVICE = "gmail"
 collection = MongodbClient[SERVICE]["user"]
@@ -249,7 +249,7 @@ class GmailService():
                 emails.append(email)
             except HttpError:
                 logger.error("Requested entity was not found with ID: %s", message['id'])
-                result = astra_collection.delete_many({
+                result = cosmos_collection.delete_many({
                     "$and": [
                         {"metadata.userId": self.user_id},
                         {"metadata.email": self.email},
@@ -439,7 +439,7 @@ class GmailService():
                             len(documents), self.task["id"])
                 if len(documents) > 0:
                     try:
-                        result = astra_collection.delete_many({
+                        result = cosmos_collection.delete_many({
                             "$and": [
                                 {"metadata.threadId": msg["threadId"]},
                                 {"metadata.service": "gmail"},
@@ -467,6 +467,7 @@ class GmailService():
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self._update_query_status(query, messages_processed)
+            # pylint: disable=duplicate-code
             upsert(self._id, self.task, "gmail")
             logger.info("✅ Collection completed for task %s", self.task["id"])
         except (ValueError, TypeError, KeyError,

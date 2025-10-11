@@ -18,7 +18,7 @@ from azure.storage.blob import (
 from azure.core.exceptions import AzureError
 
 from models.llm import client
-from models.db import vstore, astra_collection
+from models.db import vstore, cosmos_collection
 from controllers.utils import upsert
 
 
@@ -206,7 +206,7 @@ def delete_file(user_id: str, file_name: str):
 
         # Delete from vector database using the same approach as Gmail service
         try:
-            result = astra_collection.delete_many({
+            result = cosmos_collection.delete_many({
                 "$and": [
                     {"metadata.userId": user_id},
                     {"metadata.id": document_id},
