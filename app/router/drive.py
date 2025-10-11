@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """Module for defining the main routes of the API."""
 import uuid
 import threading

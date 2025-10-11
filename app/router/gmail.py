@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """Module for defining the main routes of the API."""
 import threading
 import uuid
@@ -7,7 +8,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.constants import SortMode
 from astrapy.exceptions.data_api_exceptions import DataAPITimeoutException
-from services import GmailService, get_user_credentials
+from services import GmailService, get_user_credentials, delete_user
 from schema import EmailFilter, DocsReq
 from models.db import MongodbClient, astra_collection
 from controllers.utils import (upsert, generate_query_hash, check_duplicate_query,
@@ -154,6 +155,29 @@ def validate(email: str = Query(...), user_id: str = Query(None)) -> JSONRespons
     if not credentials.valid or credentials.expired:
         return JSONResponse(content={"valid": False}, status_code=401)
     return JSONResponse(content={"valid": True})
+
+@router.delete("")
+def delete(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
+    """
+    Deletes a user's email entry from the service.
+
+    Args:
+        email (str): The email address to delete. Required as a query parameter.
+        user_id (str, optional): The user ID associated with the email.
+            If not provided, defaults to the email.
+
+    Returns:
+        JSONResponse: A JSON response indicating whether the deletion was successful.
+            - If the deletion count is not 1, returns {"valid": False} with status code 401.
+            - Otherwise, returns {"valid": True}.
+    """
+    if user_id is None:
+        user_id = email
+    count = delete_user(service = SERVICE, _id=f"{user_id}/{email}")
+    if count != 1:
+        return JSONResponse(content={"valid": False}, status_code=401)
+    return JSONResponse(content={"valid": True})
+
 
 @router.get("/queries")
 def get_queries(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
