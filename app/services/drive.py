@@ -1,6 +1,5 @@
-"""
-This module provides a utility class, `DriveService`, for interacting with the Google Drive API.
-"""
+# pylint: disable=duplicate-code
+"""This module provides a utility class, for interacting with the Google Drive API."""
 import os
 import io
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from langchain_core.documents import Document
-from models.db import vstore, cosmos_collection, MongodbClient
+from models.db import vstore, astra_collection, MongodbClient
 from controllers.utils import upsert
 from controllers.file import FileHandler
 
@@ -32,7 +31,7 @@ MAX_WORKERS = 2
 thread_pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 
 
-class DriveService():
+class DriveService(): # pylint: disable=too-few-public-methods
     """
     DriveService is a utility class for interacting with Google Drive API.
     It provides methods to construct query strings, search for emails,

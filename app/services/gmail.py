@@ -1,6 +1,5 @@
-"""
-This module provides a utility class, `GmailService`, for interacting with the Gmail API.
-"""
+# pylint: disable=duplicate-code
+"""This module provides a utility class, `GmailService`, for interacting with the Gmail API."""
 import base64
 import hashlib
 import os
@@ -11,17 +10,10 @@ from venv import logger
 from datetime import datetime, timezone, timedelta
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-# from ics import Calendar
-# from langchain_community.document_loaders import (
-#     CSVLoader,
-#     PyPDFLoader,
-#     UnstructuredExcelLoader,
-#     UnstructuredImageLoader,
-# )
+from langchain_core.documents import Document
 from controllers.file import FileHandler, CalendarLoader
 from controllers.utils import upsert, check_relevance
-from langchain_core.documents import Document
-from models.db import vstore, cosmos_collection, MongodbClient
+from models.db import vstore, astra_collection, MongodbClient
 
 SERVICE = "gmail"
 collection = MongodbClient[SERVICE]["user"]
@@ -292,11 +284,11 @@ class GmailService():
             userId="me").execute().get("emailAddress")
         return metadata
 
-    def _retrieve_content(self, msg: dict, metadata: dict, message) -> list[Document]: # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+    def _retrieve_content(self, msg: dict, metadata: dict, message) -> list[Document]: # pylint: disable=too-many-branches,too-many-locals,too-many-statements,too-many-nested-blocks
         msg_id = f"{msg['threadId']}-{msg['id']}"
         documents = []
         mime_types = []
-        if msg["payload"]["mimeType"] in [
+        if msg["payload"]["mimeType"] in [ # pylint: disable=too-many-nested-blocks
             "multipart/alternative",
             "multipart/related",
             "multipart/mixed",
@@ -348,7 +340,7 @@ class GmailService():
                             attach_docs = []
                             for document in FileHandler(path=path).process():
                                 attach_docs.append(document)
-                        except Exception as e: # pylint: disable=broad-exception-caught
+                        except (OSError, IOError, ValueError, TypeError) as e:
                             logger.error("Error processing attachment %s: %s", part["filename"], e)
                             attach_docs = []
                     if os.path.exists(path):
