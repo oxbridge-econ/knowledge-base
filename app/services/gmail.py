@@ -13,7 +13,7 @@ from googleapiclient.errors import HttpError
 from langchain_core.documents import Document
 from controllers.file import FileHandler, CalendarLoader
 from controllers.utils import upsert, check_relevance
-from models.db import vstore, astra_collection, MongodbClient
+from models.db import vstore, cosmos_collection, MongodbClient
 
 SERVICE = "gmail"
 collection = MongodbClient[SERVICE]["user"]
