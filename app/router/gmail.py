@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from astrapy.exceptions.data_api_exceptions import DataAPITimeoutException
-from pymongo import ASCENDING, DESCENDING
+from pymongo import DESCENDING
 from pymongo.errors import PyMongoError
 from services import GmailService, get_user_credentials, delete_user
 from schema import EmailFilter, DocsReq
