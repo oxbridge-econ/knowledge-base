@@ -77,6 +77,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
         metadata["email"] = self.email
         metadata["id"] = file_info["id"]
         metadata["folderId"] = file_info["folderId"]
+        metadata["folderName"] = file_info["folderName"]
         metadata["filename"] = file_info['path'].split("/")[-1]
         return metadata
 
@@ -165,6 +166,10 @@ class DriveService(): # pylint: disable=too-few-public-methods
         try:
             self._init_task(query)
             file_processed = 0
+            folder_info = self.service.files().get(  # pylint: disable=no-member
+                fileId=query["id"],
+                fields="name"
+            ).execute()
             files = self.service.files().list(  # pylint: disable=no-member
                     q=f"'{query['id']}' in parents and trashed=false"
             ).execute()
@@ -181,6 +186,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
                 done, file_info = self._download_file(file_info)
                 if done:
                     file_info["folderId"] = query["id"]
+                    file_info["folderName"] = folder_info.get("name", None)
                     metadata = self._get_metadata(file_info)
                     file_processed +=1
                     for document in FileHandler(path=file_info["path"]).process():
