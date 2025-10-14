@@ -415,3 +415,82 @@ def update_query(
     threading.Thread(target=service.collect, args=[query]).start()
     upsert(f"{user_id}/{email}", task, SERVICE)
     return JSONResponse(content=task)
+
+@router.delete("/doc")
+def delete_doc(user_id: str = Query(...), thread_id: str = Query(...)) -> JSONResponse:
+    """
+    Deletes a document from the database based on user ID and thread ID.
+
+    Args:
+        user_id (str): The user ID associated with the document. Required as a query parameter.
+        thread_id (str): The thread ID of the document to delete. Required as a query parameter.
+
+    Returns:
+        JSONResponse: A JSON response indicating whether the deletion was successful.
+            - If the document is found and deleted, returns {"status": "success", 
+              "deleted_count": <count>} with status code 200.
+            - If no documents exist for the user, returns {"error": "User not found."} 
+              with status code 404.
+            - If the user exists but the specific document is not found, returns 
+              {"error": "Document not found."} with status code 404.
+            - If the deletion operation fails, returns {"error": "Failed to delete document"} 
+              or {"error": "The delete operation timed out"} with status code 500.
+
+    Raises:
+        None
+
+    Side Effects:
+        - Deletes the document(s) from the Astra collection where both 
+          metadata.userId and metadata.threadId match the provided values.
+    """
+    try:
+        # Check if any documents exist for this user using find_one
+        user_filter = {"metadata.userId": user_id}
+        user_exists = astra_collection.find_one(
+            filter=user_filter,
+            projection={"_id": 1},
+            timeout_ms=200000
+        )
+
+        if user_exists is None:
+            return JSONResponse(
+                content={"error": "User not found."},
+                status_code=404
+            )
+
+        # Build filter to match both userId and threadId
+        _filter = {
+            "metadata.userId": user_id,
+            "metadata.threadId": thread_id
+        }
+
+        # Delete the document(s) from Astra collection
+        delete_result = astra_collection.delete_many(filter=_filter, timeout_ms=200000)
+
+        if delete_result.deleted_count > 0:
+            return JSONResponse(
+                content={
+                    "status": "success",
+                    "deleted_count": delete_result.deleted_count
+                },
+                status_code=200
+            )
+
+        # User exists but specific document not found
+        return JSONResponse(
+            content={"error": "Document not found."},
+            status_code=404
+        )
+
+    except DataAPITimeoutException as e:
+        logger.error("Timeout while deleting document: %s", e)
+        return JSONResponse(
+            content={"error": "The delete operation timed out"},
+            status_code=500
+        )
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error("Error deleting document: %s", e)
+        return JSONResponse(
+            content={"error": "Failed to delete document"},
+            status_code=500
+        )
