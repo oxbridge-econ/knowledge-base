@@ -20,56 +20,6 @@ SERVICE = "gmail"
 router = APIRouter(prefix="/service/gmail", tags=[SERVICE])
 collection = MongodbClient[SERVICE]["user"]
 
-# @router.post("/collect")
-# def collect(
-#     body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
-#     """
-#     Collects Gmail data for a specified user and initiates an asynchronous collection task.
-
-#     Args:
-#         body (EmailQuery): The query parameters for the email collection.
-#         email (str, optional): The user's email address, provided as a query parameter.
-
-#     Returns:
-#         JSONResponse:
-#             - If the user is not found, returns a 404 error with an appropriate message.
-#             - If the user's credentials are invalid or expired, returns a 401 error.
-#             - Otherwise, starts a background thread to collect emails,
-#               updates the user's query in the database,
-#               and returns a JSON response containing the task ID and its initial status.
-
-#     Raises:
-#         None
-
-#     Side Effects:
-#         - Starts a background thread for email collection.
-#         - Updates or inserts the user's query parameters in the MongoDB collection.
-#         - Modifies the global `task_states` dictionary with the new task's status.
-#     """
-#     if user_id is None:
-#         user_id = email
-#     _id = f"{user_id}/{email}"
-#     credentials = get_user_credentials(service=SERVICE, _id=_id)
-#     if not credentials.valid or credentials.expired:
-#         return JSONResponse(content={"valid": False,
-#                                      "error": "Invalid or expired credentials."}, status_code=401)
-#     body = body.model_dump()
-#     query = {k: v for k, v in body.items() if v is not None}
-#     task = {
-#         "id": f"{str(uuid.uuid4())}",
-#         "status": "pending",
-#         "service": SERVICE,
-#         "type": "manual",
-#         "query": query
-#     }
-#     query["id"] = str(uuid.uuid4()) if "id" not in query else query["id"]
-#     service = GmailService(credentials, user_id, email, task)
-#     threading.Thread(target=service.collect, args=[query]).start()
-#     del query["max_results"]
-#     upsert(_id, task, SERVICE)
-#     upsert(_id, query, SERVICE, "user")
-#     return JSONResponse(content=task)
-
 @router.get("")
 def validate(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
     """
@@ -107,8 +57,8 @@ def delete(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
         user_id = email
     count = delete_user(service = SERVICE, _id=f"{user_id}/{email}")
     if count != 1:
-        return JSONResponse(content={"error": "Failed to delete user"}, status_code=500)
-    return JSONResponse(content={"status": "success"}, status_code=200)
+        return JSONResponse(content={"valid": False}, status_code=401)
+    return JSONResponse(content={"valid": True})
 
 @router.post("/preview")
 def preview(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
@@ -392,27 +342,38 @@ def retrieve_docs(
     }
 
     try:
-        results = list(astra_collection.find(
-            filter=_filter,
-            projection={"metadata.msgId": 1},
-            sort={"metadata.date": SortMode.ASCENDING},
-            skip=body.skip or 0,
-            limit=body.limit or 10,
-            timeout_ms=200000
-        ))
+        # results = list(cosmos_collection.find(
+        #     filter=_filter,
+        #     projection={"metadata.msgId": 1},
+        #     sort={"metadata.date": SortMode.ASCENDING},
+        #     skip=body.skip or 0,
+        #     limit=body.limit or 10,
+        #     timeout_ms=200000
+        # ))
+        results = list(cosmos_collection.find(
+            _filter,  # First positional argument
+            {"metadata.msgId": 1}  # projection as second positional arg
+        ).sort("metadata.date", DESCENDING)
+         .skip(body.skip or 0)
+         .limit(body.limit or 10))
         messages = [
             {"id": d["metadata"]["msgId"]}
             for d in results
         ]
         service = GmailService(credentials, user_id, email)
+        try:
+            total = cosmos_collection.count_documents(_filter)
+        except PyMongoError as count_error:
+            logger.warning("Count failed, using result length: %s", count_error)
+            total = len(results)
+
         result = {
             "docs": service.preview(messages=messages) if len(messages) > 0 else [],
             "skip": body.skip + len(messages),
-            "total": astra_collection.count_documents(
-                filter=_filter, upper_bound=10000, timeout_ms=200000)
+            "total": total
         }
         return JSONResponse(content=result, status_code=200)
-    except DataAPITimeoutException as e:
+    except PyMongoError as e:
         logger.error(e)
         response = {
             "error": "The read operation timed out"
