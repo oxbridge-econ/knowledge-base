@@ -5,4 +5,4 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MongodbClient = MongoClient(os.getenv('MONGODB_URL'))
+MongodbClient = MongoClient(os.getenv('MONGODB_URL')) # pylint: disable=invalid-name
