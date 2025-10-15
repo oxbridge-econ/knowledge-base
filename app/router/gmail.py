@@ -57,8 +57,8 @@ def delete(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
         user_id = email
     count = delete_user(service = SERVICE, _id=f"{user_id}/{email}")
     if count != 1:
-        return JSONResponse(content={"valid": False}, status_code=401)
-    return JSONResponse(content={"valid": True})
+        return JSONResponse(content={"error": "Failed to delete user"}, status_code=500)
+    return JSONResponse(content={"status": "success"}, status_code=200)
 
 @router.post("/preview")
 def preview(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
