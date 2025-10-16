@@ -10,7 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from langchain_core.documents import Document
-from models.db import vstore, astra_collection, MongodbClient
+from models.db import vstore, cosmos_collection, MongodbClient
 from controllers.utils import upsert
 from controllers.file import FileHandler
 
@@ -77,6 +77,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
         metadata["email"] = self.email
         metadata["id"] = file_info["id"]
         metadata["folderId"] = file_info["folderId"]
+        metadata["folderName"] = file_info["folderName"]
         metadata["filename"] = file_info['path'].split("/")[-1]
         return metadata
 
@@ -100,7 +101,8 @@ class DriveService(): # pylint: disable=too-few-public-methods
             upsert(self._id, query, SERVICE, "users")
             logger.info(" Query status updated")
 
-    def _download_file(self, file_info):
+    def download_file(self, file_info):
+        """Download a file from Google Drive."""
         if file_info['mimeType'] in EXPORT_MIME_TYPES:
             export_mime_type = EXPORT_MIME_TYPES.get(file_info['mimeType'])
             if export_mime_type == 'application/pdf':
@@ -165,6 +167,10 @@ class DriveService(): # pylint: disable=too-few-public-methods
         try:
             self._init_task(query)
             file_processed = 0
+            folder_info = self.service.files().get(  # pylint: disable=no-member
+                fileId=query["id"],
+                fields="name"
+            ).execute()
             files = self.service.files().list(  # pylint: disable=no-member
                     q=f"'{query['id']}' in parents and trashed=false"
             ).execute()
@@ -178,9 +184,10 @@ class DriveService(): # pylint: disable=too-few-public-methods
                 file_info = self.service.files().get(   # pylint: disable=no-member
                     fileId=item["id"],
                     fields="id, name, mimeType, createdTime, modifiedTime, parents").execute()
-                done, file_info = self._download_file(file_info)
+                done, file_info = self.download_file(file_info)
                 if done:
                     file_info["folderId"] = query["id"]
+                    file_info["folderName"] = folder_info.get("name", None)
                     metadata = self._get_metadata(file_info)
                     file_processed +=1
                     for document in FileHandler(path=file_info["path"]).process():
@@ -190,7 +197,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
                         ))
                 if len(documents) > 0:
                     try:
-                        result = astra_collection.delete_many({
+                        result = cosmos_collection.delete_many({
                             "$and": [
                                 {"metadata.id": file_info["id"]},
                                 {"metadata.service": SERVICE},
@@ -218,6 +225,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
             self.task['status'] = "completed"
             self.task['updatedTime'] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self._update_query_status(query, file_processed)
+            # pylint: disable=duplicate-code
             upsert(self._id, self.task, SERVICE)
             logger.info("✅ Collection completed for task %s", self.task["id"])
         except (ValueError, TypeError, KeyError,
