@@ -4,13 +4,13 @@ from venv import logger
 from datetime import datetime
 import hashlib
 from langchain_core.documents import Document
-
+from pymongo.errors import PyMongoError
 from fastapi.responses import JSONResponse
 
 from openai import RateLimitError, OpenAIError
 
 
-from models.db import MongodbClient
+from models.db import MongodbClient, cosmos_collection
 from models.llm import GPTModel
 from controllers.topic import detector
 
@@ -354,3 +354,26 @@ def process_query_update(user_id: str, email: str, query_id: str,
         {"$set": {"queries.$": storage_query}}
     )
     return storage_query, result
+
+
+def process_documents(results: list) -> list:
+    """Process database results into document format."""
+    docs = []
+    for doc in results:
+        file_id = doc["metadata"]["id"]
+        filename = doc["metadata"]["filename"]
+        download_url = f"https://drive.google.com/file/d/{file_id}/view"
+        docs.append({
+            "id": file_id,
+            "filename": filename,
+            "downloadUrl": download_url
+        })
+    return docs
+
+def get_total_count(_filter: dict) -> int:
+    """Get total document count with error handling."""
+    try:
+        return cosmos_collection.count_documents(_filter)
+    except PyMongoError as count_error:
+        logger.error(count_error)
+        return 0

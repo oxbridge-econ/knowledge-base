@@ -11,7 +11,7 @@ from pymongo.errors import PyMongoError
 from schema import DriveFilter, DocsReq
 from models.db import MongodbClient, cosmos_collection
 from services import DriveService, get_user_credentials, delete_user
-from controllers.utils import upsert
+from controllers.utils import upsert, process_documents, get_total_count
 
 SERVICE = "drive"
 router = APIRouter(prefix=f"/service/{SERVICE}", tags=[SERVICE])
@@ -291,24 +291,9 @@ def retrieve_docs(
             .limit(body.limit or 10)
         )
 
-        docs = []
-        service = DriveService(credentials, user_id, email)
-        for doc in results:
-            file_id = doc["metadata"]["id"]
-            filename = doc["metadata"]["filename"]
-            # Generate Google Drive download URL
-            download_url = f"https://drive.google.com/file/d/{file_id}/view"
-            docs.append({
-                "id": file_id,
-                "filename": filename,
-                "downloadUrl": download_url
-            })
+        docs = process_documents(results)
+        total = get_total_count(_filter)
 
-        try:
-            total = cosmos_collection.count_documents(_filter)
-        except PyMongoError as count_error:
-            logger.error(count_error)
-            total = 0
         result = {
             "docs": docs,
             "skip": body.skip + len(docs),
