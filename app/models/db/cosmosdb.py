@@ -15,7 +15,7 @@ load_dotenv()
 
 # Cosmos DB Connection
 COSMOS_CONNECTION_STRING = os.getenv("COSMOS_CONNECTION_STRING")
-COSMOS_DB_NAME = os.getenv("COSMOS_DB_NAME", "knowledge_base")
+COSMOS_DB_NAME = os.getenv("COSMOS_DB_NAME", "kb")
 COSMOS_COLLECTION_NAME = os.getenv("COSMOS_COLLECTION_NAME", "documents")
 COSMOS_INDEX_NAME = os.getenv("COSMOS_INDEX_NAME", "vector_index")
 
