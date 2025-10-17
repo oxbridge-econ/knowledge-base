@@ -351,12 +351,15 @@ def retrieve_docs(
         # ))
         results = list(cosmos_collection.find(
             _filter,  # First positional argument
-            {"metadata.msgId": 1}  # projection as second positional arg
+            {"metadata.msgId": 1, "metadata.threadId": 1}  # projection as second positional arg
         ).sort("metadata.date", DESCENDING)
          .skip(body.skip or 0)
          .limit(body.limit or 10))
         messages = [
-            {"id": d["metadata"]["msgId"]}
+            {
+                "id": d["metadata"]["msgId"],
+                "threadId": d["metadata"]["threadId"]
+            }
             for d in results
         ]
         service = GmailService(credentials, user_id, email)
