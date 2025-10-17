@@ -88,7 +88,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
         if self.task["type"] == "manual":
             query["task"] = {} if "task" not in query else query["task"]
             query["task"]["status"] = "in progress"
-            upsert(self._id, query, SERVICE, "users")
+            upsert(self._id, query, SERVICE, "user")
         logger.info(" Task %s status updated to 'in progress'", self.task["id"])
 
     def _update_query_status(self, query, messages_processed):
@@ -98,7 +98,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
             query["task"]["count"] = messages_processed
             query["updatedTime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self.task["query"] = query
-            upsert(self._id, query, SERVICE, "users")
+            upsert(self._id, query, SERVICE, "user")
             logger.info(" Query status updated")
 
     def download_file(self, file_info):
