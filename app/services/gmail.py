@@ -215,7 +215,7 @@ class GmailService():
 
         Args:
             messages (list[dict]): A list of message metadata dictionaries,
-            each containing at least an 'id' key.
+            each containing at least an 'id' key, and optionally 'threadId'.
 
         Returns:
             dict: A list of dictionaries, each representing an email with the following fields:
@@ -228,6 +228,8 @@ class GmailService():
                 - datetime (str):
                     The email's sent date and time in "YYYY-MM-DD HH:MM:SS" format (HKT timezone).
                 - mimeType (str, optional): The MIME type of the email content.
+                - threadId (str): The Gmail thread ID.
+                - msgId (str): The Gmail message ID.
 
         Notes:
             - The function converts the email's internal date to Hong Kong Time (UTC+8).
@@ -246,6 +248,10 @@ class GmailService():
                 email = self._create_email_base_structure(msg, hkt_dt)
                 self._extract_headers(email, headers)
                 self._extract_email_content(email, msg)
+
+                email['threadId'] = message.get('threadId', msg.get('threadId'))
+                email['msgId'] = message['id']
+
                 emails.append(email)
             except HttpError:
                 logger.error("Requested entity was not found with ID: %s", message['id'])
