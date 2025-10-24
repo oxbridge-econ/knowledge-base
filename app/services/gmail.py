@@ -100,7 +100,7 @@ class GmailService():
             query_parts.append('has:attachment')
         return ' '.join(query_parts)
 
-    def _search(self, query, max_results=200, check_next_page=False) -> list:
+    def _search(self, query, max_results=200, check_next_page=False, return_estimate=False):
         """
         Searches for Gmail threads based on a query string
         and returns the latest message from each thread.
@@ -110,19 +110,28 @@ class GmailService():
             max_results (int, optional): The maximum number of threads to retrieve per page.
             check_next_page (bool, optional):
                 Whether to fetch additional pages of results if available.
+            return_estimate (bool, optional):
+                If True, returns a dict with messages and estimate count.
+                If False, returns only the list of messages.
 
         Returns:
-            list: A list of message metadata dicts,
+            list or dict: If return_estimate is False, returns a list of message metadata dicts,
             each representing the latest message in a thread.
+            If return_estimate is True, returns a dict with 'messages' and 'estimate' keys.
 
         Notes:
             - The `query` parameter supports Gmail's advanced search operators.
             - If `check_next_page` is True, will continue fetching threads until all are retrieved.
             - Only the most recent message from each thread is included in the results.
+            - The estimate is obtained from Gmail API's resultSizeEstimate field.
         """
         query = self._parse_query(query)
         result = self.service.users().threads().list(  # pylint: disable=no-member
             userId='me', q=query, maxResults=max_results).execute()
+
+        # Capture the estimate from the first API call
+        estimate = result.get('resultSizeEstimate', 0)
+
         threads = []
         if "threads" in result:
             threads.extend(result["threads"])
@@ -140,6 +149,12 @@ class GmailService():
             if thread_data.get('messages'):
                 latest_message = thread_data['messages'][-1]
                 messages.append(latest_message)
+
+        if return_estimate:
+            return {
+                'messages': messages,
+                'estimate': estimate
+            }
         return messages
 
     def _create_email_base_structure(self, msg: dict, hkt_dt: datetime) -> dict:
@@ -487,25 +502,84 @@ class GmailService():
             upsert(self._id, self.task, "gmail")
             raise
 
-    def preview(self, query = None, messages: list[dict] = None) -> list:
+    def preview(self, query = None, messages: list[dict] = None):
         """
-        Retrieves a preview list of emails matching the given query.
+        Retrieves a preview of emails matching the given query or message list,
+        with an estimate of total matching emails.
 
         Args:
-            query (str): The search query to filter emails.
+            query (dict, optional): The search query parameters to filter emails.
+                Supports filtering by subject, from, to, cc, keywords, date range, etc.
+            messages (list[dict], optional): Pre-fetched list of message metadata.
+                If provided, bypasses search and uses these messages directly.
 
         Returns:
-            list: A list of email previews matching the query.
-            Returns an empty list if no messages are found or if an error occurs.
+            dict or list: When query is provided, returns a dict with:
+                - estimate (int): Estimated total number of matching emails
+                - preview (list): List of email preview objects (max 10)
+                - filters_applied (dict): Summary of active filter criteria
+                - preview_count (int): Number of emails in the preview
+                - has_more (bool): Whether there are more results beyond the preview
+                - warning (str or None): Warning message if estimate exceeds 200,
+                    recommending users to refine filters for efficient processing
+            When messages are provided directly, returns a list of email previews
+            for backward compatibility.
 
         Raises:
-            Logs exceptions of type KeyError, ValueError, or TypeError and returns an empty list.
+            Logs exceptions of type KeyError, ValueError, or TypeError and returns
+            appropriate empty response.
+
+        Notes:
+            - The estimate is obtained from Gmail API's resultSizeEstimate
+            - Preview is limited to 10 emails for performance
+            - Warning threshold is set at 200 emails (>200 triggers warning)
+            - Filtering criteria documented in EmailFilter schema
         """
         try:
+            estimate = 0
+            preview_emails = []
+
             if messages is None or len(messages) == 0:
                 if query is not None:
-                    messages = self._search(query, max_results=10)
-            return self._get_email_by_messages(messages)
+                    # Use _search with return_estimate to get both messages and count
+                    search_result = self._search(query, max_results=10, return_estimate=True)
+                    messages = search_result['messages']
+                    estimate = search_result['estimate']
+                    preview_emails = self._get_email_by_messages(messages)
+
+                    # Build response with estimate and metadata
+                    filters_applied = {k: v for k, v in query.items()
+                                     if v is not None and k not in ['id', 'max_results']}
+
+                    # Add warning if result count exceeds threshold
+                    warning = None
+                    if estimate > 200:
+                        warning = ("Too many results! Consider refining your filters to "
+                                 "reduce the number of emails for more efficient processing.")
+
+                    return {
+                        'estimate': estimate,
+                        'preview': preview_emails,
+                        'filters_applied': filters_applied,
+                        'preview_count': len(preview_emails),
+                        'has_more': estimate > len(preview_emails),
+                        'warning': warning
+                    }
+
+            # Backward compatibility: when messages are provided directly
+            preview_emails = self._get_email_by_messages(messages)
+            return preview_emails
+
         except (KeyError, ValueError, TypeError) as e:
             logger.info("An error occurred: %s", e)
+            # Return appropriate empty response based on context
+            if query is not None:
+                return {
+                    'estimate': 0,
+                    'preview': [],
+                    'filters_applied': {},
+                    'preview_count': 0,
+                    'has_more': False,
+                    'warning': None
+                }
             return []
