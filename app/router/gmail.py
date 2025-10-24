@@ -62,13 +62,53 @@ def delete(email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
 @router.post("/preview")
 def preview(body: EmailFilter, email: str = Query(...), user_id: str = Query(None)) -> JSONResponse:
     """
-    Handles the chat POST request.
+    Previews and estimates the number of emails matching the specified filter criteria.
+
+    This endpoint retrieves a preview of up to 10 emails that match the provided filters
+    and returns an estimate of the total number of matching emails in the user's Gmail account.
 
     Args:
-        query (ReqData): The request data containing the query parameters.
+        body (EmailFilter): Email filter criteria including:
+            - subject: Filter by email subject
+            - from_email: Filter by sender email address
+            - to_email: Filter by recipient email address
+            - cc_email: Filter by CC email address
+            - has_words: Keywords that emails must contain
+            - not_has_words: Keywords that emails must not contain
+            - before: Filter emails before this date (YYYY/MM/DD)
+            - after: Filter emails after this date (YYYY/MM/DD)
+            - topics: List of topics for relevance filtering
+            - has_attachment: Filter emails with attachments
+        email (str): User's email address for authentication. Required query parameter.
+        user_id (str, optional): User ID, defaults to email if not provided.
 
     Returns:
-        str: The generated response from the chat function.
+        JSONResponse: A JSON response containing:
+            - estimate (int): Estimated total number of emails matching the filters
+            - preview (list): List of up to 10 email preview objects with fields:
+                * subject, from, to, cc, content, snippet, datetime, threadId, msgId
+            - filters_applied (dict): Summary of the filter criteria used
+            - preview_count (int): Number of emails included in the preview
+            - has_more (bool): Whether there are more results beyond the preview
+            - warning (str or null): Warning message if estimate exceeds 200 emails,
+                recommending users to refine filters for efficient processing
+        
+        Returns 401 if credentials are invalid or expired.
+
+    Example Response:
+        {
+            "estimate": 245,
+            "preview": [{"subject": "...", "from": "...", ...}],
+            "filters_applied": {"subject": "tariff", "after": "2022/01/01"},
+            "preview_count": 10,
+            "has_more": true,
+            "warning": "Too many results! Consider refining your filters..."
+        }
+
+    Notes:
+        - Estimate is obtained from Gmail API's resultSizeEstimate
+        - Preview is limited to 10 emails for performance
+        - Use this endpoint to assess data volume before initiating full email collection
     """
     if user_id is None:
         user_id = email
