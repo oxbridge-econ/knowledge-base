@@ -22,6 +22,10 @@ SERVICE = "file"
 AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
 AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
 
+# File size limit in bytes (default: 5 MB, configurable via environment variable)
+MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "5"))
+MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+
 ALLOWED_FILE_TYPES = {
     "application/pdf": ".pdf",
     "text/plain": ".txt",
@@ -62,6 +66,16 @@ class FileService:
             dict: Task information with processing status
         """
         try:
+            # Validate file size
+            file_size = len(content)
+            if file_size > MAX_FILE_SIZE:
+                file_size_mb = file_size / (1024 * 1024)
+                raise ValueError(
+                    f"File '{filename}' exceeds the size limit. "
+                    f"File size: {file_size_mb:.2f} MB, "
+                    f"Maximum allowed: {MAX_FILE_SIZE_MB} MB"
+                )
+
             # Validate file type
             if content_type not in ALLOWED_FILE_TYPES:
                 raise ValueError(f"Unsupported file type: {content_type}")

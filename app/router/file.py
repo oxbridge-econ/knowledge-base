@@ -45,6 +45,7 @@ async def upload_files(files: List[UploadFile] = File(...),
             tasks.append(result)
 
         except (FileAlreadyExistsError, ValueError) as e:
+            logger.warning("File validation error for %s: %s", file.filename, str(e))
             task["status"] = "failed"
             task["error"] = str(e)
             tasks.append(task)

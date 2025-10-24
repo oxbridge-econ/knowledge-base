@@ -14,6 +14,10 @@ from models.db import vstore, cosmos_collection, MongodbClient
 from controllers.utils import upsert
 from controllers.file import FileHandler
 
+# File size limit in bytes (default: 5 MB, configurable via environment variable)
+MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "5"))
+MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+
 SERVICE = "drive"
 collection = MongodbClient[SERVICE]["user"]
 
@@ -136,7 +140,7 @@ class DriveService(): # pylint: disable=too-few-public-methods
                 logger.info("Download completed for file: %s", file_info['name'])
         return done, file_info
 
-    def collect(self, query):
+    def collect(self, query): # pylint: disable=too-many-locals, too-many-statements
         """
         Collects and processes files from a specified Google Drive folder based on given query.
 
@@ -183,7 +187,22 @@ class DriveService(): # pylint: disable=too-few-public-methods
                 logger.info("Processing file with ID: %s", item["id"])
                 file_info = self.service.files().get(   # pylint: disable=no-member
                     fileId=item["id"],
-                    fields="id, name, mimeType, createdTime, modifiedTime, parents").execute()
+                    fields="id, name, mimeType, createdTime, modifiedTime, parents, size").execute()
+
+                # Check file size (skip Google files as they don't have size until exported)
+                file_size = file_info.get('size')
+                if file_size is not None:
+                    file_size_int = int(file_size)
+                    if file_size_int > MAX_FILE_SIZE:
+                        file_size_mb = file_size_int / (1024 * 1024)
+                        logger.warning(
+                            "Skipping file '%s' (ID: %s): exceeds size limit. "
+                            "File size: %.2f MB, Maximum allowed: %d MB",
+                            file_info.get('name', 'Unknown'), item["id"],
+                            file_size_mb, MAX_FILE_SIZE_MB
+                        )
+                        continue
+
                 done, file_info = self.download_file(file_info)
                 if done:
                     file_info["folderId"] = query["id"]
